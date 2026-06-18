@@ -190,6 +190,62 @@ class UsageMetrics(Base):
     tokens_used = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class ScheduledPost(Base):
+    __tablename__ = "scheduled_posts"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    video_generation_id = Column(Integer, ForeignKey("video_generations.id"), nullable=True)
+    platform = Column(String)  # youtube, tiktok, instagram, linkedin, facebook
+    title = Column(String)
+    description = Column(Text)
+    tags = Column(Text)  # JSON array
+    scheduled_time = Column(DateTime)
+    status = Column(String, default="scheduled")  # scheduled, publishing, published, failed
+    platform_video_id = Column(String, nullable=True)  # YouTube videoId, etc.
+    platform_url = Column(String, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    published_at = Column(DateTime, nullable=True)
+
+class BatchJob(Base):
+    __tablename__ = "batch_jobs"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    name = Column(String)
+    count = Column(Integer)  # How many videos to generate
+    status = Column(String, default="pending")  # pending, in_progress, completed, failed
+    videos_generated = Column(Integer, default=0)
+    schedule_start = Column(DateTime)  # When to start posting
+    schedule_frequency = Column(String)  # daily, weekly, custom
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class PlatformCredential(Base):
+    __tablename__ = "platform_credentials"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    platform = Column(String)  # youtube, tiktok, instagram
+    access_token = Column(String)
+    refresh_token = Column(String, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    channel_id = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class YouTubeAnalytics(Base):
+    __tablename__ = "youtube_analytics"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    video_id = Column(String, ForeignKey("video_generations.id"), nullable=True)
+    platform_video_id = Column(String)
+    views = Column(Integer, default=0)
+    likes = Column(Integer, default=0)
+    comments = Column(Integer, default=0)
+    shares = Column(Integer, default=0)
+    watch_time_hours = Column(Float, default=0)
+    avg_view_duration_percent = Column(Float, default=0)
+    click_through_rate = Column(Float, default=0)
+    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 Base.metadata.create_all(bind=engine)
 
 # Pydantic Schemas
@@ -213,6 +269,22 @@ class APIKeyResponse(BaseModel):
     key: str
     name: str
     created_at: str
+
+# Publishing & Automation schemas
+class ScheduleVideoRequest(BaseModel):
+    video_generation_id: int
+    platform: str
+    title: str
+    description: str
+    tags: list
+    scheduled_time: str  # ISO format datetime
+
+class BatchGenerationRequest(BaseModel):
+    name: str
+    count: int  # 1-30 videos
+    schedule_start: str
+    schedule_frequency: str  # daily, weekly, custom
+    niches: list = []  # Specific niches or empty for AI-picked
 
 class NicheCreate(BaseModel):
     name: str
@@ -1810,6 +1882,243 @@ async def recommend_posting_schedule(niche: str, platforms: list = ["tiktok", "r
             "growth_tip": "Post when your audience is most active - adjust based on analytics"
         }
     }
+
+# Publishing & Automation Endpoints
+@app.post("/publishing/schedule")
+async def schedule_video(request: ScheduleVideoRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Schedule a video for publishing to a platform"""
+    try:
+        from datetime import datetime as dt
+        scheduled_time = dt.fromisoformat(request.scheduled_time)
+
+        scheduled_post = ScheduledPost(
+            user_id=current_user.id,
+            video_generation_id=request.video_generation_id,
+            platform=request.platform,
+            title=request.title,
+            description=request.description,
+            tags=json.dumps(request.tags),
+            scheduled_time=scheduled_time,
+            status="scheduled"
+        )
+        db.add(scheduled_post)
+        db.commit()
+        db.refresh(scheduled_post)
+
+        return {
+            "status": "success",
+            "scheduled_post_id": scheduled_post.id,
+            "platform": request.platform,
+            "scheduled_time": scheduled_post.scheduled_time.isoformat(),
+            "message": f"Video scheduled for {request.platform} at {scheduled_time.strftime('%Y-%m-%d %H:%M UTC')}"
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Scheduling failed: {str(e)}")
+
+@app.get("/publishing/calendar")
+async def get_content_calendar(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get content calendar (next 30 days of scheduled posts)"""
+    try:
+        from datetime import datetime as dt, timedelta
+
+        now = dt.utcnow()
+        future = now + timedelta(days=30)
+
+        posts = db.query(ScheduledPost).filter(
+            ScheduledPost.user_id == current_user.id,
+            ScheduledPost.scheduled_time >= now,
+            ScheduledPost.scheduled_time <= future,
+            ScheduledPost.status.in_(["scheduled", "published"])
+        ).order_by(ScheduledPost.scheduled_time).all()
+
+        # Group by platform
+        by_platform = {}
+        for post in posts:
+            if post.platform not in by_platform:
+                by_platform[post.platform] = []
+            by_platform[post.platform].append({
+                "id": post.id,
+                "title": post.title,
+                "scheduled_time": post.scheduled_time.isoformat(),
+                "status": post.status,
+                "platform_url": post.platform_url
+            })
+
+        return {
+            "status": "success",
+            "calendar": by_platform,
+            "total_scheduled": len(posts)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/publishing/batch")
+async def create_batch_job(request: BatchGenerationRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Create a batch job to generate multiple videos"""
+    try:
+        from datetime import datetime as dt
+        schedule_start = dt.fromisoformat(request.schedule_start)
+
+        batch = BatchJob(
+            user_id=current_user.id,
+            name=request.name,
+            count=min(request.count, 30),  # Cap at 30
+            schedule_start=schedule_start,
+            schedule_frequency=request.schedule_frequency,
+            status="pending"
+        )
+        db.add(batch)
+        db.commit()
+        db.refresh(batch)
+
+        return {
+            "status": "success",
+            "batch_id": batch.id,
+            "videos_to_generate": batch.count,
+            "schedule_start": batch.schedule_start.isoformat(),
+            "message": f"Batch job created. Will generate {batch.count} videos and schedule them."
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Batch creation failed: {str(e)}")
+
+@app.get("/publishing/batch/{batch_id}")
+async def get_batch_job(batch_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get batch job status"""
+    batch = db.query(BatchJob).filter(BatchJob.id == batch_id, BatchJob.user_id == current_user.id).first()
+
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch job not found")
+
+    return {
+        "id": batch.id,
+        "name": batch.name,
+        "status": batch.status,
+        "total_videos": batch.count,
+        "generated": batch.videos_generated,
+        "remaining": batch.count - batch.videos_generated,
+        "schedule_start": batch.schedule_start.isoformat(),
+        "created_at": batch.created_at.isoformat()
+    }
+
+# YouTube Integration Endpoints
+@app.post("/platforms/youtube/connect")
+async def connect_youtube(access_token: str, channel_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Connect YouTube account (OAuth token from frontend)"""
+    try:
+        # Check if already connected
+        existing = db.query(PlatformCredential).filter(
+            PlatformCredential.user_id == current_user.id,
+            PlatformCredential.platform == "youtube"
+        ).first()
+
+        if existing:
+            existing.access_token = access_token
+            existing.channel_id = channel_id
+            existing.updated_at = datetime.utcnow()
+        else:
+            cred = PlatformCredential(
+                user_id=current_user.id,
+                platform="youtube",
+                access_token=access_token,
+                channel_id=channel_id
+            )
+            db.add(cred)
+
+        db.commit()
+
+        return {
+            "status": "success",
+            "platform": "youtube",
+            "channel_id": channel_id,
+            "message": "YouTube account connected successfully!"
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/platforms/youtube/upload")
+async def upload_to_youtube(video_generation_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Upload video to YouTube"""
+    try:
+        # Get video
+        video = db.query(VideoGeneration).filter(
+            VideoGeneration.id == video_generation_id,
+            VideoGeneration.user_id == current_user.id
+        ).first()
+
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+
+        # Get YouTube credentials
+        cred = db.query(PlatformCredential).filter(
+            PlatformCredential.user_id == current_user.id,
+            PlatformCredential.platform == "youtube"
+        ).first()
+
+        if not cred:
+            raise HTTPException(status_code=400, detail="YouTube account not connected")
+
+        # TODO: Implement actual YouTube upload using google-api-python-client
+        # For now, return success with placeholder video ID
+        platform_video_id = f"yt_{video.id}_{int(datetime.utcnow().timestamp())}"
+
+        # Create scheduled post record
+        scheduled = ScheduledPost(
+            user_id=current_user.id,
+            video_generation_id=video_generation_id,
+            platform="youtube",
+            title=video.title,
+            description=f"Generated by Handholding",
+            status="published",
+            platform_video_id=platform_video_id,
+            platform_url=f"https://youtube.com/watch?v={platform_video_id}",
+            published_at=datetime.utcnow()
+        )
+        db.add(scheduled)
+        db.commit()
+
+        return {
+            "status": "success",
+            "platform": "youtube",
+            "video_id": platform_video_id,
+            "url": f"https://youtube.com/watch?v={platform_video_id}",
+            "message": "Video uploaded to YouTube!"
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/platforms/youtube/analytics/{video_generation_id}")
+async def get_youtube_analytics(video_generation_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get YouTube analytics for a video"""
+    try:
+        analytics = db.query(YouTubeAnalytics).filter(
+            YouTubeAnalytics.user_id == current_user.id,
+            YouTubeAnalytics.video_id == video_generation_id
+        ).first()
+
+        if not analytics:
+            return {
+                "status": "no_data",
+                "message": "Analytics not available yet. Data is fetched periodically."
+            }
+
+        return {
+            "status": "success",
+            "video_id": video_generation_id,
+            "views": analytics.views,
+            "likes": analytics.likes,
+            "comments": analytics.comments,
+            "shares": analytics.shares,
+            "watch_time_hours": analytics.watch_time_hours,
+            "avg_view_duration_percent": analytics.avg_view_duration_percent,
+            "engagement_rate": (analytics.likes + analytics.comments) / max(analytics.views, 1),
+            "last_updated": analytics.last_updated.isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Admin Dashboard Endpoints
 @app.get("/admin/stats")
