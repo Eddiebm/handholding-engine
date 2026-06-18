@@ -8,6 +8,6 @@ services:
     plan: free
     envVars:
       - key: DATABASE_URL
-        sync: false
+        fromGroup: api-vars
       - key: OPENAI_API_KEY
-        sync: false
+        fromGroup: api-vars
