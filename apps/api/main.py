@@ -199,15 +199,20 @@ async def call_openai(prompt: str, system: str = "", response_format: str = "tex
     if response_format == "json":
         payload["response_format"] = {"type": "json_object"}
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{OPENAI_API_BASE}/chat/completions",
-            json=payload,
-            headers=headers,
-            timeout=30,
-        )
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{OPENAI_API_BASE}/chat/completions",
+                json=payload,
+                headers=headers,
+            )
+            response.raise_for_status()
+            data = response.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            return content
+    except Exception as e:
+        print(f"OpenAI API error: {e}")
+        raise
 
 # Routes
 @app.get("/health")
