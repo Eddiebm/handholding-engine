@@ -1,15 +1,19 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
-from pydantic import BaseModel
-from datetime import datetime
+from pydantic import BaseModel, EmailStr
+from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
 import httpx
 import json
 import sys
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+import secrets
+import uuid
 
 load_dotenv()
 
@@ -19,6 +23,15 @@ OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
 YOUTUBE_CREDENTIALS = os.getenv("YOUTUBE_CREDENTIALS", "")
+
+# Auth configuration
+JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRATION_HOURS = 24
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+
+# Password hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OpenAI pricing per 1K tokens (as of 2024)
 PRICING = {
@@ -37,9 +50,16 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
-    email = Column(String, unique=True)
+    email = Column(String, unique=True, index=True)
     name = Column(String)
+    password_hash = Column(String)
+    subscription_tier = Column(String, default="starter")  # starter, pro, agency
+    stripe_customer_id = Column(String, nullable=True)
+    stripe_subscription_id = Column(String, nullable=True)
+    videos_this_month = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class Niche(Base):
     __tablename__ = "niches"
@@ -121,6 +141,27 @@ class Voice(Base):
     is_default = Column(String, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class APIKey(Base):
+    __tablename__ = "api_keys"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    key = Column(String, unique=True, index=True)
+    name = Column(String)
+    last_used = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    tier = Column(String)  # starter, pro, agency
+    stripe_subscription_id = Column(String)
+    status = Column(String)  # active, cancelled, past_due
+    current_period_start = Column(DateTime)
+    current_period_end = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 class VideoGeneration(Base):
     __tablename__ = "video_generations"
     id = Column(Integer, primary_key=True)
@@ -152,6 +193,27 @@ class UsageMetrics(Base):
 Base.metadata.create_all(bind=engine)
 
 # Pydantic Schemas
+# Auth schemas
+class SignupRequest(BaseModel):
+    email: str
+    name: str
+    password: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+    user_id: int
+    subscription_tier: str
+
+class APIKeyResponse(BaseModel):
+    key: str
+    name: str
+    created_at: str
+
 class NicheCreate(BaseModel):
     name: str
     audience: str
@@ -718,10 +780,160 @@ async def call_openai(prompt: str, system: str = "", response_format: str = "tex
         sys.stderr.flush()
         raise
 
+# Auth helpers
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+def create_access_token(user_id: int, expires_delta: timedelta = None) -> str:
+    if expires_delta is None:
+        expires_delta = timedelta(hours=JWT_EXPIRATION_HOURS)
+
+    expire = datetime.utcnow() + expires_delta
+    to_encode = {"user_id": user_id, "exp": expire}
+    encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return encoded_jwt
+
+def verify_token(token: str) -> int:
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id: int = payload.get("user_id")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return user_id
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)) -> User:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+
+    token = authorization.split(" ")[1]
+    user_id = verify_token(token)
+    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    return user
+
 # Routes
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+# Auth endpoints
+@app.post("/auth/signup")
+async def signup(request: SignupRequest, db: Session = Depends(get_db)):
+    """Create new user account"""
+    # Check if user exists
+    existing = db.query(User).filter(User.email == request.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    # Create user
+    user = User(
+        email=request.email,
+        name=request.name,
+        password_hash=hash_password(request.password),
+        subscription_tier="starter"
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # Generate token
+    token = create_access_token(user.id)
+
+    return {
+        "status": "success",
+        "access_token": token,
+        "token_type": "bearer",
+        "user_id": user.id,
+        "message": "Account created successfully. Welcome to Handholding!"
+    }
+
+@app.post("/auth/login")
+async def login(request: LoginRequest, db: Session = Depends(get_db)):
+    """Login user and return JWT token"""
+    user = db.query(User).filter(User.email == request.email).first()
+
+    if not user or not verify_password(request.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = create_access_token(user.id)
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user_id": user.id,
+        "subscription_tier": user.subscription_tier
+    }
+
+@app.get("/auth/me")
+async def get_current_user_info(current_user: User = Depends(get_current_user)):
+    """Get current user info"""
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "name": current_user.name,
+        "subscription_tier": current_user.subscription_tier,
+        "videos_this_month": current_user.videos_this_month,
+        "created_at": current_user.created_at.isoformat()
+    }
+
+@app.post("/auth/api-keys")
+async def create_api_key(name: str = "Default API Key", current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Generate a new API key for programmatic access"""
+    key = f"hc_{secrets.token_urlsafe(32)}"
+
+    api_key = APIKey(
+        user_id=current_user.id,
+        key=key,
+        name=name
+    )
+    db.add(api_key)
+    db.commit()
+
+    return {
+        "key": key,
+        "name": name,
+        "created_at": api_key.created_at.isoformat(),
+        "note": "Save this key securely. You won't be able to see it again."
+    }
+
+@app.get("/auth/api-keys")
+async def list_api_keys(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """List all API keys for current user"""
+    keys = db.query(APIKey).filter(APIKey.user_id == current_user.id, APIKey.is_active == True).all()
+
+    return {
+        "keys": [
+            {
+                "id": k.id,
+                "name": k.name,
+                "key": k.key[:20] + "...",  # Only show partial key
+                "last_used": k.last_used.isoformat() if k.last_used else None,
+                "created_at": k.created_at.isoformat()
+            }
+            for k in keys
+        ]
+    }
+
+@app.delete("/auth/api-keys/{key_id}")
+async def revoke_api_key(key_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Revoke an API key"""
+    api_key = db.query(APIKey).filter(APIKey.id == key_id, APIKey.user_id == current_user.id).first()
+
+    if not api_key:
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    api_key.is_active = False
+    db.commit()
+
+    return {"status": "success", "message": "API key revoked"}
 
 @app.get("/download/video/{filename}")
 async def download_video(filename: str):
