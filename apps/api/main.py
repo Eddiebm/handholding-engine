@@ -549,6 +549,13 @@ async def auto_workflow(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to generate niche: {str(e)}")
 
     try:
+        # Ensure demo user exists
+        demo_user = db.query(User).filter(User.id == 1).first()
+        if not demo_user:
+            demo_user = User(id=1, email="demo@example.com", name="Demo User")
+            db.add(demo_user)
+            db.commit()
+
         niche = Niche(user_id=1, **niche_data)
         db.add(niche)
         db.commit()
