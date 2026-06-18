@@ -968,6 +968,9 @@ async def auto_workflow(db: Session = Depends(get_db)):
         "idea_id": best_idea.id,
         "idea_title": best_idea.title,
         "script_id": script.id,
+        "script_framework": script.framework,
+        "script_hook": script.hook,
+        "script_cta": script.cta,
         "asset_pack_id": assets.id,
         "message": "Complete workflow generated with AI!",
         "cost": {
@@ -1136,6 +1139,7 @@ async def full_automation(db: Session = Depends(get_db)):
             "niche": niche.name,
             "idea": best_idea.title,
             "script_id": script.id,
+            "script_framework": script.framework,
             "asset_pack_id": assets.id,
             "automation_files": {
                 "voiceover": voice_file if voice_file else "Not generated",

@@ -105,9 +105,18 @@ export default function AutoPage() {
                 <h2 className="text-xl font-bold text-purple-600">10-Minute Script Written</h2>
                 <p className="text-sm text-gray-500">Script ID: {result.script_id}</p>
               </div>
-              <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-semibold">Script</span>
+              <div className="flex gap-2">
+                {result.script_framework && (
+                  <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-xs font-semibold">
+                    {result.script_framework}
+                  </span>
+                )}
+                <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-semibold">Script</span>
+              </div>
             </div>
-            <p className="text-gray-600">Complete video script with hooks, main content, and CTAs</p>
+            <p className="text-gray-600">
+              {result.script_hook && <><strong>Hook:</strong> {result.script_hook}</> || "Complete video script with hooks, main content, and CTAs"}
+            </p>
           </div>
 
           {/* Asset Pack */}
