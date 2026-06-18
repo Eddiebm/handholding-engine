@@ -1425,6 +1425,135 @@ Only return valid JSON, no other text."""
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Multi-platform error: {str(e)}")
 
+@app.post("/api/seo/optimize")
+async def optimize_for_seo(title: str, description: str, niche: str, db: Session = Depends(get_db)):
+    """AI-powered SEO optimization for YouTube"""
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="OpenAI API key required")
+
+    try:
+        prompt = f"""Optimize this YouTube video for SEO:
+
+Current Title: {title}
+Description: {description}
+Niche: {niche}
+
+Return JSON with:
+- optimized_title: (60 chars max, includes keywords)
+- optimized_description: (5000 chars max, paragraph format)
+- key_topics: ["topic1", "topic2", ...] (7-10 topics)
+- seo_score: (1-100, how optimized it is)
+
+Only return JSON."""
+
+        response = await call_openai(prompt, response_format="json")
+        data = json.loads(response)
+
+        return {
+            "status": "success",
+            "seo_optimization": data,
+            "notes": "Use optimized title and description for YouTube upload"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"SEO optimization error: {str(e)}")
+
+@app.post("/api/hashtags/generate")
+async def generate_hashtags(title: str, niche: str, platform: str, db: Session = Depends(get_db)):
+    """Generate platform-specific hashtags"""
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="OpenAI API key required")
+
+    try:
+        platform_guidance = {
+            "tiktok": "Use 8-15 hashtags. Mix popular (#ForYou, #FYP) with niche hashtags. Max 150 chars total.",
+            "reels": "Use 5-10 relevant hashtags. Include trending hashtags. Captions + hashtags.",
+            "youtube_shorts": "Use 5-7 hashtags in description. First 3 are most important.",
+            "linkedin": "Use 5-7 professional hashtags. Avoid over-hashtaging.",
+            "facebook": "Use 2-5 hashtags. Place at end of caption or comment."
+        }
+
+        prompt = f"""Generate hashtags for a viral {platform} video:
+
+Title: {title}
+Niche: {niche}
+
+Guidelines: {platform_guidance.get(platform, 'Use 8-10 hashtags')}
+
+Return JSON:
+{{
+  "hashtags": ["#hashtag1", "#hashtag2", ...],
+  "trending_hashtags": ["#trending1", "#trending2"],
+  "branded_hashtag": "#unique_hashtag_for_brand",
+  "caption_suggestion": "Where to place hashtags in caption"
+}}
+
+Only return JSON."""
+
+        response = await call_openai(prompt, response_format="json")
+        data = json.loads(response)
+
+        return {
+            "status": "success",
+            "platform": platform,
+            "hashtags": data
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Hashtag generation error: {str(e)}")
+
+@app.post("/api/schedule/recommend")
+async def recommend_posting_schedule(niche: str, platforms: list = ["tiktok", "reels", "youtube_shorts"], db: Session = Depends(get_db)):
+    """Recommend optimal posting times by platform and niche"""
+
+    # Based on research for each platform
+    platform_schedules = {
+        "tiktok": {
+            "best_days": ["Tuesday", "Wednesday", "Thursday"],
+            "best_times": ["6-10am", "7-11pm"],
+            "frequency": "3-5 times per week",
+            "reason": "Peak user activity, higher engage rates"
+        },
+        "reels": {
+            "best_days": ["Tuesday", "Wednesday", "Friday"],
+            "best_times": ["6-9am", "5-7pm"],
+            "frequency": "3-4 times per week",
+            "reason": "Feed algorithm favors consistent posting, peak engagement times"
+        },
+        "youtube_shorts": {
+            "best_days": ["Any day"],
+            "best_times": ["2-4pm", "8-10pm"],
+            "frequency": "Daily or 5x/week",
+            "reason": "YouTube rewards frequency, viewer availability"
+        },
+        "linkedin": {
+            "best_days": ["Tuesday", "Wednesday", "Thursday"],
+            "best_times": ["8-10am", "5-6pm"],
+            "frequency": "3-5 times per week",
+            "reason": "Weekday workday engagement, morning/evening browsing"
+        },
+        "facebook": {
+            "best_days": ["Wednesday", "Thursday", "Friday"],
+            "best_times": ["1-3pm", "7-9pm"],
+            "frequency": "4-5 times per week",
+            "reason": "Afternoon/evening when users are active"
+        }
+    }
+
+    schedule = {}
+    for platform in platforms:
+        if platform in platform_schedules:
+            schedule[platform] = platform_schedules[platform]
+
+    return {
+        "status": "success",
+        "niche": niche,
+        "schedule": schedule,
+        "strategy": {
+            "daily_strategy": "Post 1 video per platform daily for maximum reach",
+            "weekly_strategy": "Batch create 7 videos, schedule optimal times via platform tools",
+            "growth_tip": "Post when your audience is most active - adjust based on analytics"
+        }
+    }
+
 # Admin Dashboard Endpoints
 @app.get("/admin/stats")
 def get_user_stats(user_id: int = 1, db: Session = Depends(get_db)):
