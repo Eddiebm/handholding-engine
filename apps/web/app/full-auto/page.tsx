@@ -143,16 +143,40 @@ export default function FullAutoPage() {
             )}
           </div>
 
-          {/* Next Step */}
-          <div className="card bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300">
-            <h2 className="text-2xl font-bold mb-4 text-green-900">⚡ Next: Assemble Video</h2>
-            <div className="bg-white p-4 rounded-lg font-mono text-sm overflow-x-auto mb-4">
-              <p className="text-gray-800">ffmpeg -i voiceover.mp3 -i broll.mp4 -i thumbnail.png output.mp4</p>
+          {/* Final Video */}
+          {result.automation_files?.final_video && result.automation_files.final_video !== "Not assembled" ? (
+            <div className="card border-l-4 border-green-500 bg-green-50">
+              <h2 className="text-2xl font-bold mb-4 text-green-700">✅ Final Video Assembled!</h2>
+              <video
+                controls
+                className="w-full rounded-lg mb-4"
+                style={{ maxHeight: "400px" }}
+              >
+                <source src={result.automation_files.final_video} type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
+              <p className="text-sm text-green-900 mb-4">
+                Your video is assembled and ready! Download it and upload to YouTube.
+              </p>
+              <a
+                href={result.automation_files.final_video}
+                download
+                className="btn w-full text-center"
+              >
+                ⬇️ Download Video (MP4)
+              </a>
             </div>
-            <p className="text-green-900 text-sm">
-              All files are ready. Use FFmpeg or DaVinci Resolve to assemble the final video with transitions, music, and effects. Then upload to YouTube!
-            </p>
-          </div>
+          ) : (
+            <div className="card border-l-4 border-amber-400 bg-amber-50">
+              <h2 className="text-2xl font-bold mb-4 text-amber-900">⚡ Video Assembly</h2>
+              <p className="text-amber-900 text-sm">
+                {result.automation_files?.final_video || "Video assembly in progress or not available..."}
+              </p>
+              <p className="text-xs text-amber-700 mt-2">
+                Note: Assembly may take a few minutes. Refresh the page if needed.
+              </p>
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="grid grid-cols-2 gap-4">

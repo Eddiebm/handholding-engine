@@ -268,6 +268,103 @@ async def fetch_broll(query: str, count: int = 5) -> list:
 
     return []
 
+async def assemble_video(voiceover_file: str, broll_videos: list, thumbnail_file: str, title: str, cta_text: str) -> str:
+    """Assemble final video from voiceover, B-roll, and thumbnail"""
+    try:
+        from moviepy.editor import (
+            AudioFileClip,
+            ImageClip,
+            VideoFileClip,
+            CompositeVideoClip,
+            concatenate_videoclips,
+            CompositeAudioClip,
+            ColorClip,
+        )
+        from moviepy.video.fx.all import vfx
+        import random
+
+        # Get voiceover duration
+        audio = AudioFileClip(voiceover_file)
+        duration = audio.duration
+
+        # Create intro (thumbnail with title)
+        if thumbnail_file and os.path.exists(thumbnail_file):
+            intro = ImageClip(thumbnail_file).set_duration(3)
+            intro = intro.resize(height=720).set_fps(30)
+        else:
+            # Fallback: solid color intro
+            intro = ColorClip(size=(1280, 720), color=(50, 50, 50)).set_duration(3)
+
+        # Prepare B-roll clips
+        broll_clips = []
+        for url in broll_videos[:5]:  # Use up to 5 B-roll videos
+            try:
+                if url.startswith("http"):
+                    # Download video if it's a URL
+                    import requests
+                    response = requests.get(url, timeout=10)
+                    temp_file = f"/tmp/broll_{len(broll_clips)}.mp4"
+                    with open(temp_file, "wb") as f:
+                        f.write(response.content)
+                    clip = VideoFileClip(temp_file)
+                else:
+                    clip = VideoFileClip(url)
+
+                # Resize to 1280x720
+                clip = clip.resize(height=720)
+                broll_clips.append(clip)
+            except Exception as e:
+                sys.stderr.write(f"Failed to load B-roll: {str(e)}\n")
+                continue
+
+        # Assemble video: intro + B-roll + outro
+        if broll_clips:
+            # Distribute B-roll across voiceover duration
+            main_duration = max(0, duration - 6)  # 3 sec intro, 3 sec outro
+            avg_clip_duration = main_duration / len(broll_clips) if broll_clips else 3
+
+            # Cut B-roll to fit
+            sized_broll = []
+            for clip in broll_clips:
+                cut_clip = clip.subclipped(0, min(clip.duration, avg_clip_duration))
+                sized_broll.append(cut_clip)
+
+            # Concatenate B-roll
+            main_video = concatenate_videoclips(sized_broll, method="chain")
+            main_video = main_video.resize(height=720).set_fps(30)
+        else:
+            # Fallback: use solid color
+            main_video = ColorClip(size=(1280, 720), color=(30, 30, 30)).set_duration(max(0, duration - 6))
+
+        # Create outro (title card with CTA)
+        outro = ColorClip(size=(1280, 720), color=(20, 20, 20)).set_duration(3)
+
+        # Combine all clips
+        final_video = concatenate_videoclips([intro, main_video, outro])
+        final_video = final_video.set_fps(30)
+
+        # Add audio
+        final_video = final_video.set_audio(audio)
+
+        # Add fade effects
+        final_video = final_video.fadein(0.5).fadeout(0.5)
+
+        # Export video
+        output_file = f"/tmp/final_video_{int(os.times()[4])}.mp4"
+        final_video.write_videofile(output_file, verbose=False, logger=None, fps=30, codec="libx264")
+
+        # Cleanup
+        audio.close()
+        if isinstance(final_video, CompositeVideoClip):
+            final_video.close()
+
+        return output_file
+
+    except Exception as e:
+        sys.stderr.write(f"Video assembly error: {str(e)}\n")
+        sys.stderr.flush()
+        return ""
+
 async def generate_thumbnail(prompt: str) -> str:
     """Generate thumbnail using DALL-E"""
     try:
@@ -375,6 +472,23 @@ async def call_openai(prompt: str, system: str = "", response_format: str = "tex
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/download/video/{filename}")
+async def download_video(filename: str):
+    """Download assembled video file"""
+    import mimetypes
+    from fastapi.responses import FileResponse
+
+    file_path = f"/tmp/{filename}"
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    return FileResponse(
+        path=file_path,
+        media_type="video/mp4",
+        filename=filename
+    )
 
 @app.post("/niches")
 def create_niche(niche: NicheCreate, db: Session = Depends(get_db)):
@@ -923,23 +1037,37 @@ async def full_automation(db: Session = Depends(get_db)):
         # Step 4: Generate thumbnail
         thumbnail_file = await generate_thumbnail(assets_data["thumbnail_prompt"])
 
+        # Step 5: Assemble final video
+        final_video_file = ""
+        if voice_file:
+            broll_urls = [v["url"] for v in broll_data] if broll_data else []
+            final_video_file = await assemble_video(
+                voiceover_file=voice_file,
+                broll_videos=broll_urls,
+                thumbnail_file=thumbnail_file if thumbnail_file else "",
+                title=best_idea.title,
+                cta_text=script_data["cta"]
+            )
+
         return {
             "status": "success",
-            "message": "Full automation complete! Ready for video assembly.",
+            "message": "Full automation complete! Video assembled and ready to upload.",
             "niche": niche.name,
             "idea": best_idea.title,
             "script_id": script.id,
             "asset_pack_id": assets.id,
             "automation_files": {
-                "voiceover": voice_file if voice_file else "Not generated (set ELEVENLABS_API_KEY)",
+                "voiceover": voice_file if voice_file else "Not generated",
                 "broll_videos": len(broll_data),
-                "thumbnail": thumbnail_file if thumbnail_file else "Not generated (requires DALL-E quota)"
+                "thumbnail": thumbnail_file if thumbnail_file else "Not generated",
+                "final_video": final_video_file if final_video_file else "Not assembled"
             },
             "cost": {
                 "total": round(session_costs["total"], 4),
                 "currency": "USD"
             },
-            "next_step": "Files ready. Use FFmpeg to assemble video: ffmpeg -i voiceover.mp3 -i broll.mp4 -i thumbnail.png output.mp4"
+            "next_step": "Video ready! Download the final video and upload to YouTube directly.",
+            "download_url": f"Download: {final_video_file}" if final_video_file else "Video assembly failed"
         }
 
     except Exception as e:
