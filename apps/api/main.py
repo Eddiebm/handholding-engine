@@ -16,6 +16,10 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
 
+print(f"DEBUG: DATABASE_URL={DATABASE_URL[:50]}...")
+print(f"DEBUG: OPENAI_API_KEY={'set' if OPENAI_API_KEY else 'NOT SET'}")
+print(f"DEBUG: OPENAI_API_BASE={OPENAI_API_BASE}")
+
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
