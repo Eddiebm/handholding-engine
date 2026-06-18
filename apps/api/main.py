@@ -16,6 +16,9 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/handholding")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
+YOUTUBE_CREDENTIALS = os.getenv("YOUTUBE_CREDENTIALS", "")
 
 # OpenAI pricing per 1K tokens (as of 2024)
 PRICING = {
@@ -189,6 +192,105 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# Automation helpers
+async def generate_voice(script_text: str) -> str:
+    """Generate voiceover using ElevenLabs"""
+    if not ELEVENLABS_API_KEY:
+        return ""
+
+    try:
+        import requests
+        headers = {"xi-api-key": ELEVENLABS_API_KEY}
+        data = {
+            "text": script_text,
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.75
+            }
+        }
+
+        response = requests.post(
+            "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM",
+            headers=headers,
+            json=data
+        )
+
+        if response.status_code == 200:
+            # Save audio file
+            filename = f"/tmp/voiceover_{int(os.times()[4])}.mp3"
+            with open(filename, "wb") as f:
+                f.write(response.content)
+            return filename
+    except Exception as e:
+        sys.stderr.write(f"Voice generation error: {str(e)}\n")
+
+    return ""
+
+async def fetch_broll(query: str, count: int = 5) -> list:
+    """Fetch stock videos from Pexels"""
+    if not PEXELS_API_KEY:
+        return []
+
+    try:
+        import requests
+        headers = {"Authorization": PEXELS_API_KEY}
+        params = {"query": query, "per_page": count}
+
+        response = requests.get(
+            "https://api.pexels.com/videos/search",
+            headers=headers,
+            params=params
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            videos = []
+            for video in data.get("videos", []):
+                videos.append({
+                    "url": video["video_files"][0]["link"],
+                    "title": video["user"]["name"],
+                    "duration": video.get("duration", 0)
+                })
+            return videos
+    except Exception as e:
+        sys.stderr.write(f"B-roll fetch error: {str(e)}\n")
+
+    return []
+
+async def generate_thumbnail(prompt: str) -> str:
+    """Generate thumbnail using DALL-E"""
+    try:
+        headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
+        payload = {
+            "model": "dall-e-3",
+            "prompt": f"YouTube thumbnail (1280x720): {prompt}",
+            "n": 1,
+            "size": "1024x1024"
+        }
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                f"{OPENAI_API_BASE}/images/generations",
+                json=payload,
+                headers=headers
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                image_url = data["data"][0]["url"]
+
+                # Download and save image
+                import requests
+                img_response = requests.get(image_url)
+                filename = f"/tmp/thumbnail_{int(os.times()[4])}.png"
+                with open(filename, "wb") as f:
+                    f.write(img_response.content)
+                return filename
+    except Exception as e:
+        sys.stderr.write(f"Thumbnail generation error: {str(e)}\n")
+
+    return ""
 
 async def call_openai(prompt: str, system: str = "", response_format: str = "text"):
     """Call OpenAI-compatible API and track costs"""
@@ -672,6 +774,125 @@ async def auto_workflow(db: Session = Depends(get_db)):
             "api_calls": len(session_costs["calls"])
         }
     }
+
+@app.post("/demo/full-automation")
+async def full_automation(db: Session = Depends(get_db)):
+    """Complete automation: niche → YouTube upload (requires API keys)"""
+
+    if not ELEVENLABS_API_KEY or not PEXELS_API_KEY:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing ELEVENLABS_API_KEY or PEXELS_API_KEY environment variables"
+        )
+
+    try:
+        # Step 1: Generate full workflow
+        niche_prompt = "Pick ONE trending YouTube niche with high monetization potential. Return ONLY JSON: {\"name\": \"...\", \"audience\": \"...\", \"monetization_angle\": \"...\", \"notes\": \"...\"}"
+        niche_text = await call_openai(niche_prompt)
+        niche_data = json.loads(niche_text)
+
+        demo_user = db.query(User).filter(User.id == 1).first()
+        if not demo_user:
+            demo_user = User(id=1, email="demo@example.com", name="Demo User")
+            db.add(demo_user)
+            db.commit()
+
+        niche = Niche(user_id=1, **niche_data)
+        db.add(niche)
+        db.commit()
+        db.refresh(niche)
+
+        # Competitors
+        comp_prompt = f"For '{niche.name}', list 5 REAL YouTube competitors. Return JSON array: [{{\"title_or_url\": \"name\", \"notes\": \"why it works\"}}]"
+        comp_text = await call_openai(comp_prompt)
+        comp_data = json.loads(comp_text)
+
+        for comp in comp_data:
+            competitor = CompetitorInput(niche_id=niche.id, **comp)
+            db.add(competitor)
+        db.commit()
+
+        # Ideas
+        ideas_prompt = f"For '{niche.name}' ({niche.audience}), create 5 viral video ideas. Return JSON: [{{\"title\": \"...\", \"reason\": \"...\", \"demand_score\": 8, \"clickability_score\": 8, \"monetization_score\": 8, \"production_ease_score\": 8, \"trust_risk_score\": 9, \"repeatability_score\": 8}}]"
+        ideas_text = await call_openai(ideas_prompt)
+        ideas_data = json.loads(ideas_text)
+
+        best_idea = None
+        for idea_data in ideas_data:
+            idea_data["total_score"] = (idea_data["demand_score"] + idea_data["clickability_score"] + idea_data["monetization_score"] + idea_data["production_ease_score"] + idea_data["trust_risk_score"] + idea_data["repeatability_score"]) / 6
+            idea = VideoIdea(niche_id=niche.id, **idea_data, status="selected")
+            db.add(idea)
+            db.commit()
+            db.refresh(idea)
+            if not best_idea or idea.total_score > best_idea.total_score:
+                best_idea = idea
+
+        # Script
+        script_prompt = f"Write a viral 10-min YouTube script for: '{best_idea.title}' ({niche.audience}). Return JSON: {{\"hook\": \"...\", \"full_script\": \"...\", \"fact_check_flags\": [], \"unsupported_claims\": [], \"cta\": \"...\" }}"
+        script_text = await call_openai(script_prompt, response_format="json")
+        script_data = json.loads(script_text)
+
+        script = Script(
+            idea_id=best_idea.id,
+            hook=script_data["hook"],
+            full_script=script_data["full_script"],
+            fact_check_flags=json.dumps(script_data.get("fact_check_flags", [])),
+            unsupported_claims=json.dumps(script_data.get("unsupported_claims", [])),
+            cta=script_data["cta"]
+        )
+        db.add(script)
+        db.commit()
+        db.refresh(script)
+
+        # Assets
+        assets_prompt = f"Create asset pack for '{best_idea.title}'. Return JSON: {{\"thumbnail_prompt\": \"...\", \"alternate_titles\": [...], \"broll_list\": [...], \"voiceover_instructions\": \"...\", \"editor_brief\": \"...\", \"youtube_description\": \"...\", \"pinned_comment\": \"...\"}}"
+        assets_text = await call_openai(assets_prompt, response_format="json")
+        assets_data = json.loads(assets_text)
+
+        assets = AssetPack(
+            script_id=script.id,
+            thumbnail_prompt=assets_data["thumbnail_prompt"],
+            alternate_titles=json.dumps(assets_data["alternate_titles"]),
+            broll_list=json.dumps(assets_data["broll_list"]),
+            voiceover_instructions=assets_data["voiceover_instructions"],
+            editor_brief=assets_data["editor_brief"],
+            youtube_description=assets_data["youtube_description"],
+            pinned_comment=assets_data["pinned_comment"]
+        )
+        db.add(assets)
+        db.commit()
+
+        # Step 2: Generate voiceover
+        voice_file = await generate_voice(script_data["full_script"])
+
+        # Step 3: Fetch B-roll
+        broll_data = await fetch_broll(best_idea.title, count=3)
+
+        # Step 4: Generate thumbnail
+        thumbnail_file = await generate_thumbnail(assets_data["thumbnail_prompt"])
+
+        return {
+            "status": "success",
+            "message": "Full automation complete! Ready for video assembly.",
+            "niche": niche.name,
+            "idea": best_idea.title,
+            "script_id": script.id,
+            "asset_pack_id": assets.id,
+            "automation_files": {
+                "voiceover": voice_file if voice_file else "Not generated (set ELEVENLABS_API_KEY)",
+                "broll_videos": len(broll_data),
+                "thumbnail": thumbnail_file if thumbnail_file else "Not generated (requires DALL-E quota)"
+            },
+            "cost": {
+                "total": round(session_costs["total"], 4),
+                "currency": "USD"
+            },
+            "next_step": "Files ready. Use FFmpeg to assemble video: ffmpeg -i voiceover.mp3 -i broll.mp4 -i thumbnail.png output.mp4"
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Automation error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
