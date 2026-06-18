@@ -399,15 +399,84 @@ async def generate_thumbnail(prompt: str) -> str:
 
     return ""
 
-async def call_openai(prompt: str, system: str = "", response_format: str = "text"):
+# Script frameworks for variety
+SCRIPT_FRAMEWORKS = {
+    "storytelling": """Create a compelling narrative script with:
+- HOOK: Start with a surprising story or personal anecdote (5 sec)
+- BUILD: Tell the story with drama and tension (7 min)
+- CLIMAX: The turning point or biggest revelation (30 sec)
+- RESOLUTION: How it all connects to the topic (1 min)
+- CTA: Call to action with urgency
+
+Make it feel like telling a friend a story, not reading facts.""",
+
+    "educational": """Write a clear teaching script with:
+- HOOK: Ask a question that makes them curious (5 sec)
+- LESSON 1: First concept with examples (2 min)
+- LESSON 2: Second concept building on first (2 min)
+- LESSON 3: Advanced application (2 min)
+- SUMMARY: Key takeaways they'll remember (1 min)
+- CTA: What to do with this knowledge
+
+Use analogies and simple language.""",
+
+    "trending": """Create a timely, pop-culture script:
+- HOOK: Reference what's trending NOW (5 sec)
+- WHY IT MATTERS: Why this trend is important (1 min)
+- HOW TO: Step-by-step what you can do (5 min)
+- PROOF: Real examples or statistics (1 min)
+- OPPORTUNITY: How they can capitalize on it (1 min)
+- CTA: Urgent action to take
+
+Make it feel urgent and FOMO-driven.""",
+
+    "entertaining": """Write an entertaining, personality-driven script:
+- HOOK: Funny observation or relatable moment (5 sec)
+- SETUP: Establish the scenario or problem (1 min)
+- BUILDUP: Add humor, twists, unexpected angles (6 min)
+- PAYOFF: The big reveal or punchline (1 min)
+- LESSON: What they learned (optional, 30 sec)
+- CTA: What they should do next
+
+Make it feel like hanging with a funny friend.""",
+
+    "contrarian": """Write a surprising, opinion-driven script:
+- HOOK: State a bold, controversial take (5 sec)
+- COMMON BELIEF: What most people think (1 min)
+- WHY WRONG: Evidence against the common belief (3 min)
+- TRUTH: Your contrarian perspective (3 min)
+- PROOF: Why you're right (1 min)
+- CTA: Debate in comments
+
+Make it feel like you're revealing a secret.""",
+
+    "tutorials": """Write a clear, step-by-step how-to script:
+- INTRO: What they'll learn and why (1 min)
+- TOOLS: What they need (30 sec)
+- STEP 1: First action with details (1.5 min)
+- STEP 2: Second action (1.5 min)
+- STEP 3: Third action (1.5 min)
+- FINAL STEP: How to finish (1 min)
+- TIPS: Pro tips and common mistakes (1 min)
+- CTA: Share their results
+
+Make it beginner-friendly and easy to follow.""",
+}
+
+async def call_openai(prompt: str, system: str = "", response_format: str = "text", framework: str = ""):
     """Call OpenAI-compatible API and track costs"""
     global session_costs
 
     headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
 
     messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
+    system_content = system
+    if framework and framework in SCRIPT_FRAMEWORKS:
+        framework_instruction = SCRIPT_FRAMEWORKS[framework]
+        system_content = f"{system}\n\n{framework_instruction}" if system else framework_instruction
+
+    if system_content:
+        messages.append({"role": "system", "content": system_content})
     messages.append({"role": "user", "content": prompt})
 
     payload = {
@@ -620,9 +689,13 @@ def select_idea(idea_id: int, db: Session = Depends(get_db)):
 @app.post("/scripts/generate")
 async def generate_script(idea_id: int, db: Session = Depends(get_db)):
     """Generate a 10-minute script with hook, pattern interrupts, and CTA"""
+    import random
     idea = db.query(VideoIdea).filter(VideoIdea.id == idea_id).first()
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found")
+
+    # Pick a random framework for variety
+    framework = random.choice(list(SCRIPT_FRAMEWORKS.keys()))
 
     prompt = f"""
 Write a compelling 10-minute YouTube script for:
@@ -648,7 +721,7 @@ Return JSON:
 Only return JSON, no other text.
 """
 
-    response = await call_openai(prompt, response_format="json")
+    response = await call_openai(prompt, response_format="json", framework=framework)
     script_data = json.loads(response)
 
     db_script = Script(
@@ -844,9 +917,11 @@ async def auto_workflow(db: Session = Depends(get_db)):
             if not best_idea or idea.total_score > best_idea.total_score:
                 best_idea = idea
 
-        # Step 4: Generate script
+        # Step 4: Generate script with random framework
+        import random
+        framework = random.choice(list(SCRIPT_FRAMEWORKS.keys()))
         script_prompt = f"Write a viral 10-min YouTube script for: '{best_idea.title}' ({niche.audience}). Return JSON: {{\"hook\": \"...\", \"full_script\": \"...\", \"fact_check_flags\": [], \"unsupported_claims\": [], \"cta\": \"...\" }}"
-        script_text = await call_openai(script_prompt, response_format="json")
+        script_text = await call_openai(script_prompt, response_format="json", framework=framework)
         script_data = json.loads(script_text)
 
         script = Script(
@@ -984,9 +1059,11 @@ async def full_automation(db: Session = Depends(get_db)):
             if not best_idea or idea.total_score > best_idea.total_score:
                 best_idea = idea
 
-        # Script
+        # Script with random framework
+        import random
+        framework = random.choice(list(SCRIPT_FRAMEWORKS.keys()))
         script_prompt = f"Write a viral 10-min YouTube script for: '{best_idea.title}' ({niche.audience}). Return JSON: {{\"hook\": \"...\", \"full_script\": \"...\", \"fact_check_flags\": [], \"unsupported_claims\": [], \"cta\": \"...\" }}"
-        script_text = await call_openai(script_prompt, response_format="json")
+        script_text = await call_openai(script_prompt, response_format="json", framework=framework)
         script_data = json.loads(script_text)
 
         script = Script(
