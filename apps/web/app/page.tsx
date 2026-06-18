@@ -86,18 +86,24 @@ export default function Dashboard() {
         </div>
         <p className="text-gray-700 mb-6">Choose your automation level:</p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <button
             onClick={() => router.push("/auto")}
             className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-bold py-4 px-6 rounded-lg transition-all"
           >
-            ✨ AI Picks Everything
+            ▶️ YouTube 10min
           </button>
           <button
             onClick={() => router.push("/full-auto")}
             className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-4 px-6 rounded-lg transition-all"
           >
-            🤖 Full Automation
+            🤖 YouTube + Video
+          </button>
+          <button
+            onClick={() => router.push("/multi-platform")}
+            className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-4 px-6 rounded-lg transition-all"
+          >
+            📱 4 Platforms
           </button>
         </div>
 

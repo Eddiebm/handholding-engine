@@ -477,6 +477,82 @@ Make it feel like you're revealing a secret.""",
 Make it beginner-friendly and easy to follow.""",
 }
 
+# Platform-specific script formats
+PLATFORM_TEMPLATES = {
+    "tiktok": {
+        "duration": "15-60 sec",
+        "aspect_ratio": "9:16",
+        "format": """Create a viral TikTok script (30-45 seconds):
+- HOOK (0-3 sec): Stop-scroll moment - shocking, funny, or relatable
+- BUILDUP (3-30 sec): Build tension or curiosity with fast pacing
+- PAYOFF (30-40 sec): Reveal, punchline, or satisfying conclusion
+- CTA (40-45 sec): Follow, like, comment, or check bio
+
+Requirements:
+- Fast-paced (cut every 2-3 seconds)
+- Vertical (9:16 aspect ratio)
+- Add text overlays for key points
+- Include trending sounds/music cues
+- End with call-to-action (follow, DM, link in bio)
+- Captions required (80% of viewers mute)"""
+    },
+
+    "reels": {
+        "duration": "15-90 sec",
+        "aspect_ratio": "9:16",
+        "format": """Create an Instagram Reels script (45-60 seconds):
+- HOOK (0-2 sec): Immediate attention grab - trending, funny, or beautiful
+- MAIN CONTENT (2-45 sec): Demonstrate, educate, entertain, or inspire
+- TRANSITION (45-50 sec): Build to climax or surprising moment
+- CTA (50-60 sec): Like, save, share, or follow
+
+Requirements:
+- Vertical (9:16 aspect ratio)
+- Include text overlays and stickers
+- Captions are essential (most watch muted)
+- Use trending audio from Instagram
+- Visually polished (good lighting, clean editing)
+- End with strong CTA to drive saves/shares"""
+    },
+
+    "youtube_shorts": {
+        "duration": "15-60 sec",
+        "aspect_ratio": "9:16",
+        "format": """Create a YouTube Shorts script (30-45 seconds):
+- HOOK (0-2 sec): Curiosity gap or surprising statement
+- MAIN IDEA (2-35 sec): Deliver value, entertainment, or education
+- TWIST (35-40 sec): Unexpected angle, reveal, or punchline
+- CTA (40-45 sec): Subscribe, check full video, or engagement request
+
+Requirements:
+- Vertical (9:16 aspect ratio)
+- Optimize for YouTube's algorithm (encourages sharing)
+- Include text overlays for key messages
+- Captions required for accessibility
+- Can link to longer YouTube video
+- Drive subscriptions and engagement"""
+    },
+
+    "linkedin": {
+        "duration": "30-90 sec",
+        "aspect_ratio": "1:1 or 4:5",
+        "format": """Create a LinkedIn video script (45-60 seconds, professional tone):
+- HOOK (0-3 sec): Relevant professional insight or question
+- INSIGHT 1 (3-20 sec): First key business/career lesson
+- INSIGHT 2 (20-40 sec): Second reinforcing point with example
+- INSIGHT 3 (40-50 sec): Actionable takeaway or perspective shift
+- CTA (50-60 sec): Ask question, invite discussion, or share takeaway
+
+Requirements:
+- Professional but personable tone
+- Square (1:1) or portrait (4:5) aspect ratio
+- Include text overlays with key statistics/quotes
+- Captions helpful (many watch with sound off at work)
+- Focus on thought leadership, not just promotion
+- End with engagement question to drive comments"""
+    }
+}
+
 async def call_openai(prompt: str, system: str = "", response_format: str = "text", framework: str = ""):
     """Call OpenAI-compatible API and track costs"""
     global session_costs
@@ -1215,6 +1291,92 @@ async def full_automation(db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Automation error: {str(e)}")
+
+@app.post("/demo/multi-platform")
+async def multi_platform(db: Session = Depends(get_db)):
+    """Generate scripts for TikTok, Reels, YouTube Shorts, and LinkedIn"""
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set")
+
+    try:
+        import random
+
+        # Step 1: Create a trending niche
+        niche_prompt = "Pick ONE trending niche with high growth potential across all social platforms. Return JSON: {\"name\": \"...\", \"audience\": \"...\", \"trend_reason\": \"...\", \"viral_potential\": \"...\"}"
+        niche_text = await call_openai(niche_prompt)
+        niche_data = json.loads(niche_text)
+
+        # Ensure demo user exists
+        demo_user = db.query(User).filter(User.id == 1).first()
+        if not demo_user:
+            demo_user = User(id=1, email="demo@example.com", name="Demo User")
+            db.add(demo_user)
+            db.commit()
+
+        niche = Niche(user_id=1, **niche_data)
+        db.add(niche)
+        db.commit()
+        db.refresh(niche)
+
+        # Step 2: Generate one strong idea
+        ideas_prompt = f"For the trending niche '{niche.name}' targeting {niche.audience}, create ONE viral idea that works on ALL platforms (TikTok, Reels, Shorts, LinkedIn). Return JSON: {{\"title\": \"...\", \"reason\": \"...\", \"viral_angle\": \"...\"}}"
+        ideas_text = await call_openai(ideas_prompt)
+        ideas_data = json.loads(ideas_text)
+        idea_data = ideas_data if isinstance(ideas_data, dict) else ideas_data[0]
+
+        idea = VideoIdea(niche_id=niche.id, **idea_data, status="selected", total_score=9.0)
+        db.add(idea)
+        db.commit()
+        db.refresh(idea)
+
+        # Step 3: Generate scripts for each platform
+        platforms_data = {}
+        for platform in ["tiktok", "reels", "youtube_shorts", "linkedin"]:
+            try:
+                framework = random.choice(list(SCRIPT_FRAMEWORKS.keys()))
+                template = PLATFORM_TEMPLATES.get(platform, {}).get("format", "")
+
+                script_prompt = f"""Write a {platform} script for: '{idea.title}' targeting {niche.audience}.
+
+{template}
+
+Return JSON: {{"hook": "...", "full_script": "...", "duration": "...", "key_cta": "...", "captions": ["...", "..."]}}
+
+Only return valid JSON, no other text."""
+
+                script_text = await call_openai(script_prompt, response_format="json", framework=framework)
+                script_data = json.loads(script_text)
+
+                platforms_data[platform] = {
+                    "hook": script_data.get("hook", ""),
+                    "script": script_data.get("full_script", ""),
+                    "duration": PLATFORM_TEMPLATES[platform]["duration"],
+                    "aspect_ratio": PLATFORM_TEMPLATES[platform]["aspect_ratio"],
+                    "cta": script_data.get("key_cta", ""),
+                    "captions": script_data.get("captions", []),
+                    "framework": framework
+                }
+            except Exception as e:
+                sys.stderr.write(f"Error generating {platform} script: {str(e)}\n")
+                platforms_data[platform] = {"error": str(e)}
+
+        return {
+            "status": "success",
+            "niche": niche.name,
+            "idea": idea.title,
+            "trend_reason": niche_data.get("trend_reason", ""),
+            "viral_angle": idea_data.get("viral_angle", ""),
+            "platforms": platforms_data,
+            "next_step": "Pick a platform and generate video. Each script is optimized for that platform's algorithm.",
+            "cost": {
+                "total": round(session_costs["total"], 4),
+                "currency": "USD"
+            }
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Multi-platform error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
