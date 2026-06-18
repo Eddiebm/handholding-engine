@@ -310,8 +310,8 @@ async def fetch_broll(query: str, count: int = 5) -> list:
 
     return []
 
-async def assemble_video(voiceover_file: str, broll_videos: list, thumbnail_file: str, title: str, cta_text: str) -> str:
-    """Assemble final video from voiceover, B-roll, and thumbnail"""
+async def assemble_video(voiceover_file: str, broll_videos: list, thumbnail_file: str, title: str, cta_text: str, platform: str = "youtube") -> str:
+    """Assemble professional video with transitions, text overlays, and platform-optimized aspect ratio"""
     try:
         from moviepy.editor import (
             AudioFileClip,
@@ -319,67 +319,102 @@ async def assemble_video(voiceover_file: str, broll_videos: list, thumbnail_file
             VideoFileClip,
             CompositeVideoClip,
             concatenate_videoclips,
-            CompositeAudioClip,
+            TextClip,
             ColorClip,
+            vfx,
+            CompositeAudioClip,
         )
-        from moviepy.video.fx.all import vfx
         import random
+
+        # Determine aspect ratio by platform
+        aspect_ratios = {
+            "tiktok": (1080, 1920),  # 9:16 vertical
+            "reels": (1080, 1920),   # 9:16 vertical
+            "youtube_shorts": (1080, 1920),  # 9:16 vertical
+            "youtube": (1920, 1080),  # 16:9 landscape
+            "linkedin": (1080, 1080),  # 1:1 square
+            "facebook": (1080, 1080),  # 1:1 square
+        }
+        width, height = aspect_ratios.get(platform, (1920, 1080))
 
         # Get voiceover duration
         audio = AudioFileClip(voiceover_file)
         duration = audio.duration
 
-        # Create intro (thumbnail with title)
+        # Create intro (thumbnail + title overlay)
         if thumbnail_file and os.path.exists(thumbnail_file):
-            intro = ImageClip(thumbnail_file).set_duration(3)
-            intro = intro.resize(height=720).set_fps(30)
+            intro = ImageClip(thumbnail_file).set_duration(2)
+            intro = intro.resize(height=height)
         else:
-            # Fallback: solid color intro
-            intro = ColorClip(size=(1280, 720), color=(50, 50, 50)).set_duration(3)
+            intro = ColorClip(size=(width, height), color=(20, 20, 20)).set_duration(2)
 
-        # Prepare B-roll clips
+        # Add title text overlay
+        try:
+            title_clip = TextClip(title, fontsize=40, color='white', font='Arial-Bold', size=(width-100, 200), method='caption')
+            title_clip = title_clip.set_duration(2).set_position(('center', 'center'))
+            intro = CompositeVideoClip([intro, title_clip])
+        except Exception as e:
+            sys.stderr.write(f"Title overlay error: {str(e)}\n")
+
+        # Prepare B-roll clips with better cutting
         broll_clips = []
-        for url in broll_videos[:5]:  # Use up to 5 B-roll videos
-            try:
-                if url.startswith("http"):
-                    # Download video if it's a URL
-                    import requests
-                    response = requests.get(url, timeout=10)
-                    temp_file = f"/tmp/broll_{len(broll_clips)}.mp4"
-                    with open(temp_file, "wb") as f:
-                        f.write(response.content)
-                    clip = VideoFileClip(temp_file)
-                else:
-                    clip = VideoFileClip(url)
+        if broll_videos:
+            for url in broll_videos[:8]:  # Use up to 8 B-roll videos
+                try:
+                    if url.startswith("http"):
+                        import requests
+                        response = requests.get(url, timeout=10)
+                        temp_file = f"/tmp/broll_{len(broll_clips)}_{int(os.times()[4])}.mp4"
+                        with open(temp_file, "wb") as f:
+                            f.write(response.content)
+                        clip = VideoFileClip(temp_file)
+                    else:
+                        clip = VideoFileClip(url)
 
-                # Resize to 1280x720
-                clip = clip.resize(height=720)
-                broll_clips.append(clip)
-            except Exception as e:
-                sys.stderr.write(f"Failed to load B-roll: {str(e)}\n")
-                continue
+                    # Resize with letterboxing to maintain aspect ratio
+                    clip = clip.resize(height=height)
+                    if clip.w < width:
+                        clip = clip.set_position(('center', 'center'))
 
-        # Assemble video: intro + B-roll + outro
+                    broll_clips.append(clip)
+                except Exception as e:
+                    sys.stderr.write(f"B-roll load error: {str(e)}\n")
+                    continue
+
+        # Assemble main video with smooth transitions
         if broll_clips:
-            # Distribute B-roll across voiceover duration
-            main_duration = max(0, duration - 6)  # 3 sec intro, 3 sec outro
-            avg_clip_duration = main_duration / len(broll_clips) if broll_clips else 3
+            main_duration = max(0, duration - 4)  # 2 sec intro, 2 sec outro
+            avg_clip_duration = main_duration / len(broll_clips)
 
-            # Cut B-roll to fit
+            # Add crossfade transitions
+            transition_duration = 0.5
             sized_broll = []
-            for clip in broll_clips:
-                cut_clip = clip.subclipped(0, min(clip.duration, avg_clip_duration))
+
+            for i, clip in enumerate(broll_clips):
+                target_duration = avg_clip_duration + (random.random() - 0.5) * 0.5  # Vary slightly
+                cut_clip = clip.subclipped(0, min(clip.duration, target_duration))
+                cut_clip = cut_clip.speedx(avg_clip_duration / max(cut_clip.duration, 0.1))  # Speed up/down to fit
+
+                # Add crossfade between clips
+                if i > 0:
+                    cut_clip = cut_clip.fx(vfx.fadein, transition_duration)
+
                 sized_broll.append(cut_clip)
 
-            # Concatenate B-roll
             main_video = concatenate_videoclips(sized_broll, method="chain")
-            main_video = main_video.resize(height=720).set_fps(30)
+            main_video = main_video.set_fps(30)
         else:
-            # Fallback: use solid color
-            main_video = ColorClip(size=(1280, 720), color=(30, 30, 30)).set_duration(max(0, duration - 6))
+            # Fallback: gradient background
+            main_video = ColorClip(size=(width, height), color=(30, 30, 30)).set_duration(max(0, duration - 4))
 
-        # Create outro (title card with CTA)
-        outro = ColorClip(size=(1280, 720), color=(20, 20, 20)).set_duration(3)
+        # Create outro with CTA text
+        outro = ColorClip(size=(width, height), color=(10, 10, 10)).set_duration(2)
+        try:
+            cta_clip = TextClip(cta_text, fontsize=35, color='yellow', font='Arial-Bold', size=(width-100, 300), method='caption')
+            cta_clip = cta_clip.set_duration(2).set_position(('center', 'center'))
+            outro = CompositeVideoClip([outro, cta_clip])
+        except Exception as e:
+            sys.stderr.write(f"CTA overlay error: {str(e)}\n")
 
         # Combine all clips
         final_video = concatenate_videoclips([intro, main_video, outro])
@@ -388,17 +423,26 @@ async def assemble_video(voiceover_file: str, broll_videos: list, thumbnail_file
         # Add audio
         final_video = final_video.set_audio(audio)
 
-        # Add fade effects
-        final_video = final_video.fadein(0.5).fadeout(0.5)
+        # Add professional fade effects
+        final_video = final_video.fx(vfx.fadein, 0.3).fx(vfx.fadeout, 0.3)
 
-        # Export video
+        # Export video with better quality
         output_file = f"/tmp/final_video_{int(os.times()[4])}.mp4"
-        final_video.write_videofile(output_file, verbose=False, logger=None, fps=30, codec="libx264")
+        final_video.write_videofile(
+            output_file,
+            verbose=False,
+            logger=None,
+            fps=30,
+            codec="libx264",
+            audio_codec="aac",
+            preset="medium",  # Better quality: slow, medium, fast
+            bitrate="8000k"  # Higher bitrate for better quality
+        )
 
         # Cleanup
         audio.close()
-        if isinstance(final_video, CompositeVideoClip):
-            final_video.close()
+        for clip in broll_clips:
+            clip.close()
 
         return output_file
 
@@ -1310,7 +1354,8 @@ async def full_automation(db: Session = Depends(get_db)):
                 broll_videos=broll_urls,
                 thumbnail_file=thumbnail_file if thumbnail_file else "",
                 title=best_idea.title,
-                cta_text=script_data["cta"]
+                cta_text=script_data["cta"],
+                platform="youtube_shorts"
             )
 
         return {
