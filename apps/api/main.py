@@ -84,6 +84,7 @@ class Script(Base):
     fact_check_flags = Column(Text)
     unsupported_claims = Column(Text)
     cta = Column(Text)
+    framework = Column(String, default="storytelling")  # Track which framework was used
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class AssetPack(Base):
@@ -730,7 +731,8 @@ Only return JSON, no other text.
         full_script=script_data["full_script"],
         fact_check_flags=json.dumps(script_data.get("fact_check_flags", [])),
         unsupported_claims=json.dumps(script_data.get("unsupported_claims", [])),
-        cta=script_data["cta"]
+        cta=script_data["cta"],
+        framework=framework
     )
     db.add(db_script)
     db.commit()
@@ -930,7 +932,8 @@ async def auto_workflow(db: Session = Depends(get_db)):
             full_script=script_data["full_script"],
             fact_check_flags=json.dumps(script_data.get("fact_check_flags", [])),
             unsupported_claims=json.dumps(script_data.get("unsupported_claims", [])),
-            cta=script_data["cta"]
+            cta=script_data["cta"],
+            framework=framework
         )
         db.add(script)
         db.commit()
@@ -1072,7 +1075,8 @@ async def full_automation(db: Session = Depends(get_db)):
             full_script=script_data["full_script"],
             fact_check_flags=json.dumps(script_data.get("fact_check_flags", [])),
             unsupported_claims=json.dumps(script_data.get("unsupported_claims", [])),
-            cta=script_data["cta"]
+            cta=script_data["cta"],
+            framework=framework
         )
         db.add(script)
         db.commit()
