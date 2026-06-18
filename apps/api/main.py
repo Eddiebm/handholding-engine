@@ -121,6 +121,34 @@ class Voice(Base):
     is_default = Column(String, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class VideoGeneration(Base):
+    __tablename__ = "video_generations"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    niche_id = Column(Integer, ForeignKey("niches.id"), nullable=True)
+    idea_id = Column(Integer, ForeignKey("video_ideas.id"), nullable=True)
+    script_id = Column(Integer, ForeignKey("scripts.id"), nullable=True)
+    title = Column(String)
+    platform = Column(String)  # tiktok, reels, youtube_shorts, linkedin, facebook
+    framework = Column(String)  # storytelling, educational, trending, etc.
+    status = Column(String, default="generated")  # generated, published, failed
+    video_url = Column(String, nullable=True)
+    thumbnail_url = Column(String, nullable=True)
+    cost = Column(Float, default=0.0)
+    views = Column(Integer, default=0)
+    engagement = Column(Integer, default=0)  # likes, comments, shares
+    created_at = Column(DateTime, default=datetime.utcnow)
+    published_at = Column(DateTime, nullable=True)
+
+class UsageMetrics(Base):
+    __tablename__ = "usage_metrics"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    metric_type = Column(String)  # api_call, script_generation, video_generation, etc.
+    cost = Column(Float, default=0.0)
+    tokens_used = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 Base.metadata.create_all(bind=engine)
 
 # Pydantic Schemas
@@ -1396,6 +1424,140 @@ Only return valid JSON, no other text."""
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Multi-platform error: {str(e)}")
+
+# Admin Dashboard Endpoints
+@app.get("/admin/stats")
+def get_user_stats(user_id: int = 1, db: Session = Depends(get_db)):
+    """Get user's overall stats"""
+    try:
+        videos = db.query(VideoGeneration).filter(VideoGeneration.user_id == user_id).all()
+        usage = db.query(UsageMetrics).filter(UsageMetrics.user_id == user_id).all()
+
+        total_cost = sum(v.cost for v in videos) + sum(u.cost for u in usage)
+        total_videos = len(videos)
+        total_views = sum(v.views for v in videos)
+        total_engagement = sum(v.engagement for v in videos)
+
+        # Platform breakdown
+        platform_stats = {}
+        for platform in ["tiktok", "reels", "youtube_shorts", "linkedin", "facebook"]:
+            platform_videos = [v for v in videos if v.platform == platform]
+            platform_stats[platform] = {
+                "count": len(platform_videos),
+                "views": sum(v.views for v in platform_videos),
+                "engagement": sum(v.engagement for v in platform_videos)
+            }
+
+        return {
+            "total_videos": total_videos,
+            "total_cost": round(total_cost, 2),
+            "total_views": total_views,
+            "total_engagement": total_engagement,
+            "avg_cost_per_video": round(total_cost / max(total_videos, 1), 2),
+            "platforms": platform_stats,
+            "estimated_earnings": round(total_views * 0.001 * 1.5, 2)  # Rough estimate: $1.50 per 1K views
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/admin/videos")
+def get_video_history(user_id: int = 1, limit: int = 50, db: Session = Depends(get_db)):
+    """Get user's video generation history"""
+    try:
+        videos = db.query(VideoGeneration).filter(
+            VideoGeneration.user_id == user_id
+        ).order_by(VideoGeneration.created_at.desc()).limit(limit).all()
+
+        return {
+            "videos": [
+                {
+                    "id": v.id,
+                    "title": v.title,
+                    "platform": v.platform,
+                    "framework": v.framework,
+                    "status": v.status,
+                    "cost": v.cost,
+                    "views": v.views,
+                    "engagement": v.engagement,
+                    "created_at": v.created_at.isoformat(),
+                    "published_at": v.published_at.isoformat() if v.published_at else None
+                }
+                for v in videos
+            ],
+            "total": len(videos)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/admin/usage")
+def get_usage_metrics(user_id: int = 1, days: int = 30, db: Session = Depends(get_db)):
+    """Get API usage over time"""
+    try:
+        from datetime import datetime, timedelta
+        cutoff = datetime.utcnow() - timedelta(days=days)
+
+        metrics = db.query(UsageMetrics).filter(
+            UsageMetrics.user_id == user_id,
+            UsageMetrics.created_at >= cutoff
+        ).all()
+
+        daily_cost = {}
+        daily_calls = {}
+        for metric in metrics:
+            date = metric.created_at.strftime("%Y-%m-%d")
+            daily_cost[date] = daily_cost.get(date, 0) + metric.cost
+            daily_calls[date] = daily_calls.get(date, 0) + 1
+
+        return {
+            "period_days": days,
+            "total_cost": round(sum(m.cost for m in metrics), 2),
+            "total_api_calls": len(metrics),
+            "avg_daily_cost": round(sum(m.cost for m in metrics) / max(days, 1), 2),
+            "daily_breakdown": {
+                "cost": daily_cost,
+                "calls": daily_calls
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/admin/analytics")
+def get_analytics(user_id: int = 1, db: Session = Depends(get_db)):
+    """Get content analytics"""
+    try:
+        videos = db.query(VideoGeneration).filter(VideoGeneration.user_id == user_id).all()
+
+        # Framework popularity
+        framework_stats = {}
+        for video in videos:
+            if video.framework not in framework_stats:
+                framework_stats[video.framework] = {"count": 0, "avg_views": 0, "total_views": 0}
+            framework_stats[video.framework]["count"] += 1
+            framework_stats[video.framework]["total_views"] += video.views
+
+        for fw in framework_stats:
+            if framework_stats[fw]["count"] > 0:
+                framework_stats[fw]["avg_views"] = framework_stats[fw]["total_views"] / framework_stats[fw]["count"]
+
+        # Niche popularity
+        niches = db.query(Niche).filter(Niche.user_id == user_id).all()
+        niche_stats = {}
+        for niche in niches:
+            niche_videos = [v for v in videos if v.niche_id == niche.id]
+            niche_stats[niche.name] = {
+                "count": len(niche_videos),
+                "total_views": sum(v.views for v in niche_videos),
+                "total_engagement": sum(v.engagement for v in niche_videos)
+            }
+
+        return {
+            "framework_performance": framework_stats,
+            "niche_performance": niche_stats,
+            "best_framework": max(framework_stats.items(), key=lambda x: x[1]["avg_views"])[0] if framework_stats else None,
+            "best_niche": max(niche_stats.items(), key=lambda x: x[1]["total_views"])[0] if niche_stats else None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
