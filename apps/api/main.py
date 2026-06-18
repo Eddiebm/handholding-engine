@@ -517,9 +517,17 @@ def get_next_action(db: Session = Depends(get_db)):
 async def auto_workflow(db: Session = Depends(get_db)):
     """AI-powered complete workflow: niche → competitors → ideas → script → assets"""
 
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set in environment")
+
     # Step 1: Create a trending niche
     niche_prompt = "Pick ONE trending YouTube niche with high monetization potential. Return ONLY JSON: {\"name\": \"...\", \"audience\": \"...\", \"monetization_angle\": \"...\", \"notes\": \"...\"}"
-    niche_text = await call_openai(niche_prompt)
+    try:
+        niche_text = await call_openai(niche_prompt)
+        if not niche_text:
+            raise HTTPException(status_code=500, detail="OpenAI returned empty response for niche")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate niche: {str(e)}")
     niche_data = json.loads(niche_text)
 
     niche = Niche(user_id=1, **niche_data)
