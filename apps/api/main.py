@@ -17,11 +17,6 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
 
-sys.stderr.write(f"DEBUG: DATABASE_URL={'set' if DATABASE_URL else 'NOT SET'}\n")
-sys.stderr.write(f"DEBUG: OPENAI_API_KEY={'set' if OPENAI_API_KEY else 'NOT SET'}\n")
-sys.stderr.write(f"DEBUG: OPENAI_API_BASE={OPENAI_API_BASE}\n")
-sys.stderr.flush()
-
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -208,22 +203,24 @@ async def call_openai(prompt: str, system: str = "", response_format: str = "tex
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             url = f"{OPENAI_API_BASE}/chat/completions"
-            sys.stderr.write(f"Calling OpenAI API at {url}\n")
-            sys.stderr.flush()
             response = await client.post(
                 url,
                 json=payload,
                 headers=headers,
             )
-            sys.stderr.write(f"Response status: {response.status_code}\n")
-            sys.stderr.flush()
             response.raise_for_status()
             data = response.json()
-            sys.stderr.write(f"Response data: {str(data)[:200]}...\n")
-            sys.stderr.flush()
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            sys.stderr.write(f"Content extracted: {content[:50] if content else 'EMPTY'}...\n")
-            sys.stderr.flush()
+
+            # Strip markdown formatting if present (```json ... ```)
+            if content.startswith("```"):
+                lines = content.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]  # Remove opening ```
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]  # Remove closing ```
+                content = "\n".join(lines).strip()
+
             return content
     except Exception as e:
         sys.stderr.write(f"OpenAI API error: {str(e)}\n")
