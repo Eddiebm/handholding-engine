@@ -122,13 +122,71 @@ export default function AutoPage() {
             <p className="text-gray-600">Thumbnail prompts, B-roll lists, voiceover instructions, YouTube description</p>
           </div>
 
+          {/* Next Steps */}
+          <div className="card bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300">
+            <h2 className="text-2xl font-bold mb-6 text-amber-900">📋 Your Action Plan (Next Steps)</h2>
+
+            <div className="space-y-4">
+              <div className="flex gap-4 items-start">
+                <div className="text-3xl">🎙️</div>
+                <div>
+                  <h3 className="font-bold text-lg mb-1">Step 1: Record Voiceover (5-10 min)</h3>
+                  <p className="text-gray-700 text-sm">Read the generated script in a quiet room. Use Audacity (free) or your phone voice memo. Follow the voiceover tone instructions from your asset pack.</p>
+                </div>
+              </div>
+
+              <div className="flex gap-4 items-start">
+                <div className="text-3xl">🎬</div>
+                <div>
+                  <h3 className="font-bold text-lg mb-1">Step 2: Gather B-Roll (Varies)</h3>
+                  <p className="text-gray-700 text-sm">Use the B-roll list from your asset pack. Record yourself or use stock footage from Unsplash, Pexels, or YouTube Music Library (free).</p>
+                </div>
+              </div>
+
+              <div className="flex gap-4 items-start">
+                <div className="text-3xl">✂️</div>
+                <div>
+                  <h3 className="font-bold text-lg mb-1">Step 3: Edit on Fiverr ($50-150)</h3>
+                  <p className="text-gray-700 text-sm">Post a gig with your voiceover file, B-roll, and the editor brief from your asset pack. Expert editors will match the thumbnail to YouTube. Typical turnaround: 3-5 days.</p>
+                </div>
+              </div>
+
+              <div className="flex gap-4 items-start">
+                <div className="text-3xl">📸</div>
+                <div>
+                  <h3 className="font-bold text-lg mb-1">Step 4: Design Thumbnail ($5-20)</h3>
+                  <p className="text-gray-700 text-sm">Order on Fiverr with your thumbnail prompt. Or use Canva Pro if you want to do it yourself. The AI prompt in your assets has everything the designer needs.</p>
+                </div>
+              </div>
+
+              <div className="flex gap-4 items-start">
+                <div className="text-3xl">🚀</div>
+                <div>
+                  <h3 className="font-bold text-lg mb-1">Step 5: Upload to YouTube (20 min)</h3>
+                  <p className="text-gray-700 text-sm">Upload edited video, paste the YouTube description and title from your asset pack. Post the pinned comment immediately after going live to boost engagement.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 p-4 bg-white rounded-lg border-l-4 border-green-500">
+              <p className="text-sm font-semibold text-gray-900 mb-2">💡 Quick Math:</p>
+              <p className="text-sm text-gray-700">
+                • AI Cost: ${result.cost?.total || "0.07"} <br/>
+                • Fiverr Editing: ~$100 <br/>
+                • Fiverr Thumbnail: ~$10 <br/>
+                • Your Time: ~8 hours <br/>
+                • Revenue Potential: $100-1000+ (depending on niche & growth)
+              </p>
+            </div>
+          </div>
+
           {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-4 mt-8">
+          <div className="grid grid-cols-2 gap-4">
             <button onClick={() => router.push("/")} className="btn btn-secondary">
-              View Dashboard
+              View Full Details
             </button>
             <button onClick={() => router.push("/auto")} className="btn">
-              Generate Another
+              Generate Another Video
             </button>
           </div>
         </>
