@@ -57,6 +57,25 @@ export default function AutoPage() {
 
       {result && (
         <>
+          {/* Cost Meter */}
+          {result.cost && (
+            <div className="card bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-300">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-lg font-bold text-gray-800">💰 AI Generation Cost</span>
+                <span className="text-3xl font-bold text-blue-600">${result.cost.total}</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+                <div
+                  className="bg-gradient-to-r from-blue-500 to-cyan-500 h-3 rounded-full"
+                  style={{ width: `${Math.min((result.cost.total / 0.50) * 100, 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-600">
+                {result.cost.api_calls} API calls • Cost scales with content complexity
+              </p>
+            </div>
+          )}
+
           {/* Niche */}
           <div className="card border-l-4 border-blue-500">
             <div className="flex justify-between items-start mb-4">

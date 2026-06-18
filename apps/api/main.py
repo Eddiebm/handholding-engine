@@ -17,6 +17,15 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
 
+# OpenAI pricing per 1K tokens (as of 2024)
+PRICING = {
+    "gpt-4-turbo": {"input": 0.01, "output": 0.03},
+    "gpt-4-turbo-2024-04-09": {"input": 0.01, "output": 0.03},
+}
+
+# Global cost tracker for the session
+session_costs = {"total": 0.0, "calls": []}
+
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -182,7 +191,9 @@ def get_db():
         db.close()
 
 async def call_openai(prompt: str, system: str = "", response_format: str = "text"):
-    """Call OpenAI-compatible API"""
+    """Call OpenAI-compatible API and track costs"""
+    global session_costs
+
     headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
 
     messages = []
@@ -211,6 +222,27 @@ async def call_openai(prompt: str, system: str = "", response_format: str = "tex
             response.raise_for_status()
             data = response.json()
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+            # Calculate cost from token usage
+            usage = data.get("usage", {})
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
+            model = data.get("model", "gpt-4-turbo")
+
+            # Get pricing for model
+            model_pricing = PRICING.get(model, PRICING.get("gpt-4-turbo"))
+            input_cost = (input_tokens / 1000) * model_pricing["input"]
+            output_cost = (output_tokens / 1000) * model_pricing["output"]
+            total_cost = input_cost + output_cost
+
+            # Track cost
+            session_costs["total"] += total_cost
+            session_costs["calls"].append({
+                "model": model,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cost": total_cost
+            })
 
             # Strip markdown formatting if present (```json ... ```)
             if content.startswith("```"):
@@ -633,7 +665,12 @@ async def auto_workflow(db: Session = Depends(get_db)):
         "idea_title": best_idea.title,
         "script_id": script.id,
         "asset_pack_id": assets.id,
-        "message": "Complete workflow generated with AI!"
+        "message": "Complete workflow generated with AI!",
+        "cost": {
+            "total": round(session_costs["total"], 4),
+            "currency": "USD",
+            "api_calls": len(session_costs["calls"])
+        }
     }
 
 if __name__ == "__main__":
