@@ -520,80 +520,85 @@ async def auto_workflow(db: Session = Depends(get_db)):
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set in environment")
 
-    # Step 1: Create a trending niche
-    niche_prompt = "Pick ONE trending YouTube niche with high monetization potential. Return ONLY JSON: {\"name\": \"...\", \"audience\": \"...\", \"monetization_angle\": \"...\", \"notes\": \"...\"}"
     try:
+        # Step 1: Create a trending niche
+        niche_prompt = "Pick ONE trending YouTube niche with high monetization potential. Return ONLY JSON: {\"name\": \"...\", \"audience\": \"...\", \"monetization_angle\": \"...\", \"notes\": \"...\"}"
         niche_text = await call_openai(niche_prompt)
         if not niche_text:
-            raise HTTPException(status_code=500, detail="OpenAI returned empty response for niche")
+            raise Exception("OpenAI returned empty response for niche")
+        niche_data = json.loads(niche_text)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate niche: {str(e)}")
-    niche_data = json.loads(niche_text)
 
-    niche = Niche(user_id=1, **niche_data)
-    db.add(niche)
-    db.commit()
-    db.refresh(niche)
-
-    # Step 2: Generate realistic competitor videos
-    comp_prompt = f"For '{niche.name}', list 5 REAL YouTube competitors. Return JSON array: [{{\"title_or_url\": \"name\", \"notes\": \"why it works\"}}]"
-    comp_text = await call_openai(comp_prompt)
-    comp_data = json.loads(comp_text)
-
-    for comp in comp_data:
-        competitor = CompetitorInput(niche_id=niche.id, **comp)
-        db.add(competitor)
-    db.commit()
-
-    # Step 3: Generate 5 video ideas
-    ideas_prompt = f"For '{niche.name}' ({niche.audience}), create 5 viral video ideas. Return JSON: [{{\"title\": \"...\", \"reason\": \"...\", \"demand_score\": 8, \"clickability_score\": 8, \"monetization_score\": 8, \"production_ease_score\": 8, \"trust_risk_score\": 9, \"repeatability_score\": 8}}]"
-    ideas_text = await call_openai(ideas_prompt)
-    ideas_data = json.loads(ideas_text)
-
-    best_idea = None
-    for idea_data in ideas_data:
-        idea_data["total_score"] = (idea_data["demand_score"] + idea_data["clickability_score"] + idea_data["monetization_score"] + idea_data["production_ease_score"] + idea_data["trust_risk_score"] + idea_data["repeatability_score"]) / 6
-        idea = VideoIdea(niche_id=niche.id, **idea_data, status="selected")
-        db.add(idea)
+    try:
+        niche = Niche(user_id=1, **niche_data)
+        db.add(niche)
         db.commit()
-        db.refresh(idea)
-        if not best_idea or idea.total_score > best_idea.total_score:
-            best_idea = idea
+        db.refresh(niche)
 
-    # Step 4: Generate script
-    script_prompt = f"Write a viral 10-min YouTube script for: '{best_idea.title}' ({niche.audience}). Return JSON: {{\"hook\": \"...\", \"full_script\": \"...\", \"fact_check_flags\": [], \"unsupported_claims\": [], \"cta\": \"...\" }}"
-    script_text = await call_openai(script_prompt, response_format="json")
-    script_data = json.loads(script_text)
+        # Step 2: Generate realistic competitor videos
+        comp_prompt = f"For '{niche.name}', list 5 REAL YouTube competitors. Return JSON array: [{{\"title_or_url\": \"name\", \"notes\": \"why it works\"}}]"
+        comp_text = await call_openai(comp_prompt)
+        comp_data = json.loads(comp_text)
 
-    script = Script(
-        idea_id=best_idea.id,
-        hook=script_data["hook"],
-        full_script=script_data["full_script"],
-        fact_check_flags=json.dumps(script_data.get("fact_check_flags", [])),
-        unsupported_claims=json.dumps(script_data.get("unsupported_claims", [])),
-        cta=script_data["cta"]
-    )
-    db.add(script)
-    db.commit()
-    db.refresh(script)
+        for comp in comp_data:
+            competitor = CompetitorInput(niche_id=niche.id, **comp)
+            db.add(competitor)
+        db.commit()
 
-    # Step 5: Generate asset pack
-    assets_prompt = f"Create asset pack for '{best_idea.title}'. Return JSON: {{\"thumbnail_prompt\": \"...\", \"alternate_titles\": [...], \"broll_list\": [...], \"voiceover_instructions\": \"...\", \"editor_brief\": \"...\", \"youtube_description\": \"...\", \"pinned_comment\": \"...\"}}"
-    assets_text = await call_openai(assets_prompt, response_format="json")
-    assets_data = json.loads(assets_text)
+        # Step 3: Generate 5 video ideas
+        ideas_prompt = f"For '{niche.name}' ({niche.audience}), create 5 viral video ideas. Return JSON: [{{\"title\": \"...\", \"reason\": \"...\", \"demand_score\": 8, \"clickability_score\": 8, \"monetization_score\": 8, \"production_ease_score\": 8, \"trust_risk_score\": 9, \"repeatability_score\": 8}}]"
+        ideas_text = await call_openai(ideas_prompt)
+        ideas_data = json.loads(ideas_text)
 
-    assets = AssetPack(
-        script_id=script.id,
-        thumbnail_prompt=assets_data["thumbnail_prompt"],
-        alternate_titles=json.dumps(assets_data["alternate_titles"]),
-        broll_list=json.dumps(assets_data["broll_list"]),
-        voiceover_instructions=assets_data["voiceover_instructions"],
-        editor_brief=assets_data["editor_brief"],
-        youtube_description=assets_data["youtube_description"],
-        pinned_comment=assets_data["pinned_comment"]
-    )
-    db.add(assets)
-    db.commit()
+        best_idea = None
+        for idea_data in ideas_data:
+            idea_data["total_score"] = (idea_data["demand_score"] + idea_data["clickability_score"] + idea_data["monetization_score"] + idea_data["production_ease_score"] + idea_data["trust_risk_score"] + idea_data["repeatability_score"]) / 6
+            idea = VideoIdea(niche_id=niche.id, **idea_data, status="selected")
+            db.add(idea)
+            db.commit()
+            db.refresh(idea)
+            if not best_idea or idea.total_score > best_idea.total_score:
+                best_idea = idea
+
+        # Step 4: Generate script
+        script_prompt = f"Write a viral 10-min YouTube script for: '{best_idea.title}' ({niche.audience}). Return JSON: {{\"hook\": \"...\", \"full_script\": \"...\", \"fact_check_flags\": [], \"unsupported_claims\": [], \"cta\": \"...\" }}"
+        script_text = await call_openai(script_prompt, response_format="json")
+        script_data = json.loads(script_text)
+
+        script = Script(
+            idea_id=best_idea.id,
+            hook=script_data["hook"],
+            full_script=script_data["full_script"],
+            fact_check_flags=json.dumps(script_data.get("fact_check_flags", [])),
+            unsupported_claims=json.dumps(script_data.get("unsupported_claims", [])),
+            cta=script_data["cta"]
+        )
+        db.add(script)
+        db.commit()
+        db.refresh(script)
+
+        # Step 5: Generate asset pack
+        assets_prompt = f"Create asset pack for '{best_idea.title}'. Return JSON: {{\"thumbnail_prompt\": \"...\", \"alternate_titles\": [...], \"broll_list\": [...], \"voiceover_instructions\": \"...\", \"editor_brief\": \"...\", \"youtube_description\": \"...\", \"pinned_comment\": \"...\"}}"
+        assets_text = await call_openai(assets_prompt, response_format="json")
+        assets_data = json.loads(assets_text)
+
+        assets = AssetPack(
+            script_id=script.id,
+            thumbnail_prompt=assets_data["thumbnail_prompt"],
+            alternate_titles=json.dumps(assets_data["alternate_titles"]),
+            broll_list=json.dumps(assets_data["broll_list"]),
+            voiceover_instructions=assets_data["voiceover_instructions"],
+            editor_brief=assets_data["editor_brief"],
+            youtube_description=assets_data["youtube_description"],
+            pinned_comment=assets_data["pinned_comment"]
+        )
+        db.add(assets)
+        db.commit()
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Workflow error: {str(e)}")
 
     return {
         "status": "success",
