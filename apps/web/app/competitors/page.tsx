@@ -6,13 +6,13 @@ import { useRouter } from "next/navigation";
 
 export default function CompetitorsPage() {
   const router = useRouter();
-  const [nichList, setNicheList] = useState([]);
+  const [nichList, setNicheList] = useState<any[]>([]);
   const [selectedNiche, setSelectedNiche] = useState(0);
   const [formData, setFormData] = useState({
     title_or_url: "",
     notes: "",
   });
-  const [competitorList, setCompetitorList] = useState([]);
+  const [competitorList, setCompetitorList] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {

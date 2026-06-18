@@ -12,7 +12,7 @@ export default function NichesPage() {
     monetization_angle: "",
     notes: "",
   });
-  const [nichList, setNicheList] = useState([]);
+  const [nichList, setNicheList] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {

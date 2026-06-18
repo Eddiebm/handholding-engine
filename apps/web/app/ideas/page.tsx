@@ -6,9 +6,9 @@ import { useRouter } from "next/navigation";
 
 export default function IdeasPage() {
   const router = useRouter();
-  const [nichList, setNicheList] = useState([]);
+  const [nichList, setNicheList] = useState<any[]>([]);
   const [selectedNiche, setSelectedNiche] = useState(0);
-  const [ideaList, setIdeaList] = useState([]);
+  const [ideaList, setIdeaList] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [scoring, setScoring] = useState<number | null>(null);
 
