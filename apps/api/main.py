@@ -207,17 +207,27 @@ async def call_openai(prompt: str, system: str = "", response_format: str = "tex
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
+            url = f"{OPENAI_API_BASE}/chat/completions"
+            sys.stderr.write(f"Calling OpenAI API at {url}\n")
+            sys.stderr.flush()
             response = await client.post(
-                f"{OPENAI_API_BASE}/chat/completions",
+                url,
                 json=payload,
                 headers=headers,
             )
+            sys.stderr.write(f"Response status: {response.status_code}\n")
+            sys.stderr.flush()
             response.raise_for_status()
             data = response.json()
+            sys.stderr.write(f"Response data: {str(data)[:200]}...\n")
+            sys.stderr.flush()
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            sys.stderr.write(f"Content extracted: {content[:50] if content else 'EMPTY'}...\n")
+            sys.stderr.flush()
             return content
     except Exception as e:
-        print(f"OpenAI API error: {e}")
+        sys.stderr.write(f"OpenAI API error: {str(e)}\n")
+        sys.stderr.flush()
         raise
 
 # Routes
