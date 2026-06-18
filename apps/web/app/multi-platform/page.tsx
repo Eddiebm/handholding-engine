@@ -50,10 +50,11 @@ export default function MultiPlatformPage() {
   }
 
   const platforms = [
-    { key: "tiktok", name: "TikTok", icon: "🎵", color: "from-black to-gray-900" },
-    { key: "reels", name: "Instagram Reels", icon: "📷", color: "from-pink-600 to-rose-600" },
-    { key: "youtube_shorts", name: "YouTube Shorts", icon: "▶️", color: "from-red-600 to-red-700" },
-    { key: "linkedin", name: "LinkedIn", icon: "💼", color: "from-blue-600 to-blue-700" }
+    { key: "tiktok", name: "TikTok", icon: "🎵", color: "from-black to-gray-900", cpm: "$0.25-$4", cpc: "$0.02-$0.04", growth: "Fastest" },
+    { key: "reels", name: "Instagram Reels", icon: "📷", color: "from-pink-600 to-rose-600", cpm: "$0.50-$3", cpc: "$0.05-$0.15", growth: "Fast" },
+    { key: "youtube_shorts", name: "YouTube Shorts", icon: "▶️", color: "from-red-600 to-red-700", cpm: "$1-$5", cpc: "$0.10-$0.30", growth: "Steady" },
+    { key: "linkedin", name: "LinkedIn", icon: "💼", color: "from-blue-600 to-blue-700", cpm: "$3-$15", cpc: "$0.50-$2", growth: "Slow but Valuable" },
+    { key: "facebook", name: "Facebook", icon: "👨‍👩‍👧‍👦", color: "from-blue-700 to-indigo-700", cpm: "$0.50-$4", cpc: "$0.05-$0.20", growth: "Consistent" }
   ];
 
   return (
@@ -136,37 +137,153 @@ export default function MultiPlatformPage() {
               <tr>
                 <th className="text-left p-3 font-bold">Platform</th>
                 <th className="text-left p-3 font-bold">Duration</th>
-                <th className="text-left p-3 font-bold">Aspect Ratio</th>
-                <th className="text-left p-3 font-bold">Best For</th>
+                <th className="text-left p-3 font-bold">CPM</th>
+                <th className="text-left p-3 font-bold">CPC</th>
+                <th className="text-left p-3 font-bold">Growth Speed</th>
               </tr>
             </thead>
             <tbody>
               <tr className="border-b hover:bg-gray-50">
                 <td className="p-3 font-bold">🎵 TikTok</td>
                 <td className="p-3">15-60 sec</td>
-                <td className="p-3">9:16</td>
-                <td className="p-3">Viral growth, entertainment</td>
+                <td className="p-3 text-green-600 font-bold">$0.25-$4</td>
+                <td className="p-3">$0.02-$0.04</td>
+                <td className="p-3">🚀 Fastest</td>
               </tr>
               <tr className="border-b hover:bg-gray-50">
                 <td className="p-3 font-bold">📷 Instagram Reels</td>
                 <td className="p-3">15-90 sec</td>
-                <td className="p-3">9:16</td>
-                <td className="p-3">Engagement, followers</td>
+                <td className="p-3 text-green-600 font-bold">$0.50-$3</td>
+                <td className="p-3">$0.05-$0.15</td>
+                <td className="p-3">⚡ Fast</td>
               </tr>
               <tr className="border-b hover:bg-gray-50">
                 <td className="p-3 font-bold">▶️ YouTube Shorts</td>
                 <td className="p-3">15-60 sec</td>
-                <td className="p-3">9:16</td>
-                <td className="p-3">YouTube ecosystem, subscribers</td>
+                <td className="p-3 text-green-600 font-bold">$1-$5</td>
+                <td className="p-3">$0.10-$0.30</td>
+                <td className="p-3">📈 Steady</td>
               </tr>
-              <tr className="hover:bg-gray-50">
+              <tr className="border-b hover:bg-gray-50">
                 <td className="p-3 font-bold">💼 LinkedIn</td>
                 <td className="p-3">30-90 sec</td>
-                <td className="p-3">1:1 or 4:5</td>
-                <td className="p-3">B2B, thought leadership</td>
+                <td className="p-3 text-green-600 font-bold">$3-$15</td>
+                <td className="p-3">$0.50-$2</td>
+                <td className="p-3">💎 Slow (High Value)</td>
+              </tr>
+              <tr className="hover:bg-gray-50">
+                <td className="p-3 font-bold">👨‍👩‍👧‍👦 Facebook</td>
+                <td className="p-3">30-120 sec</td>
+                <td className="p-3 text-green-600 font-bold">$0.50-$4</td>
+                <td className="p-3">$0.05-$0.20</td>
+                <td className="p-3">✅ Consistent</td>
               </tr>
             </tbody>
           </table>
+        </div>
+        <p className="text-xs text-gray-600 mt-4">
+          <strong>CPM</strong> = Cost Per 1,000 Impressions (ad spend) • <strong>CPC</strong> = Cost Per Click (your earnings potential)
+        </p>
+      </div>
+
+      {/* Monetization Breakdown */}
+      <div className="card bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300">
+        <h3 className="text-2xl font-bold mb-6 text-green-700">💰 Monetization Potential</h3>
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="bg-white rounded-lg p-4">
+            <p className="text-sm text-gray-600 mb-2">🎵 TikTok</p>
+            <p className="text-2xl font-bold text-green-600">$5-$80</p>
+            <p className="text-xs text-gray-600">per 10K views</p>
+            <p className="text-xs mt-2 text-gray-700">
+              <strong>Monetization:</strong> Creator Fund (after 10K followers)
+            </p>
+          </div>
+
+          <div className="bg-white rounded-lg p-4">
+            <p className="text-sm text-gray-600 mb-2">📷 Instagram</p>
+            <p className="text-2xl font-bold text-green-600">$10-$30</p>
+            <p className="text-xs text-gray-600">per 10K views</p>
+            <p className="text-xs mt-2 text-gray-700">
+              <strong>Monetization:</strong> Reels Play bonus (after 10K followers)
+            </p>
+          </div>
+
+          <div className="bg-white rounded-lg p-4">
+            <p className="text-sm text-gray-600 mb-2">▶️ YouTube Shorts</p>
+            <p className="text-2xl font-bold text-green-600">$20-$100</p>
+            <p className="text-xs text-gray-600">per 10K views</p>
+            <p className="text-xs mt-2 text-gray-700">
+              <strong>Monetization:</strong> Partner program (4K watch hours)
+            </p>
+          </div>
+
+          <div className="bg-white rounded-lg p-4">
+            <p className="text-sm text-gray-600 mb-2">💼 LinkedIn</p>
+            <p className="text-2xl font-bold text-green-600">$50-$200</p>
+            <p className="text-xs text-gray-600">per 10K views</p>
+            <p className="text-xs mt-2 text-gray-700">
+              <strong>Monetization:</strong> Sponsorships & leads (no platform share)
+            </p>
+          </div>
+
+          <div className="bg-white rounded-lg p-4">
+            <p className="text-sm text-gray-600 mb-2">👨‍👩‍👧‍👦 Facebook</p>
+            <p className="text-2xl font-bold text-green-600">$10-$80</p>
+            <p className="text-xs text-gray-600">per 10K views</p>
+            <p className="text-xs mt-2 text-gray-700">
+              <strong>Monetization:</strong> In-stream ads (Page Stars, ads revenue share)
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Revenue Math */}
+      <div className="card bg-gradient-to-r from-yellow-50 to-amber-50 border-2 border-yellow-300">
+        <h3 className="text-2xl font-bold mb-6 text-yellow-900">📈 Revenue Example: 1 Video Across 5 Platforms</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <div className="bg-white rounded-lg p-4">
+              <h4 className="font-bold text-gray-900 mb-3">Conservative (Low Views)</h4>
+              <p className="text-sm text-gray-700 mb-2">Each platform gets 10K views:</p>
+              <ul className="text-sm space-y-1 text-gray-800">
+                <li>🎵 TikTok: $5-$80</li>
+                <li>📷 Instagram: $10-$30</li>
+                <li>▶️ YouTube: $20-$100</li>
+                <li>💼 LinkedIn: $50-$200</li>
+                <li>👨‍👩‍👧‍👦 Facebook: $10-$80</li>
+              </ul>
+              <p className="text-lg font-bold text-green-600 mt-3 border-t pt-3">
+                Total: $95-$490 per video
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-white rounded-lg p-4">
+              <h4 className="font-bold text-gray-900 mb-3">Viral (High Views)</h4>
+              <p className="text-sm text-gray-700 mb-2">Each platform gets 100K views:</p>
+              <ul className="text-sm space-y-1 text-gray-800">
+                <li>🎵 TikTok: $50-$800</li>
+                <li>📷 Instagram: $100-$300</li>
+                <li>▶️ YouTube: $200-$1,000</li>
+                <li>💼 LinkedIn: $500-$2,000</li>
+                <li>👨‍👩‍👧‍👦 Facebook: $100-$800</li>
+              </ul>
+              <p className="text-lg font-bold text-green-600 mt-3 border-t pt-3">
+                Total: $950-$4,900 per video
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 p-4 bg-white rounded-lg border-l-4 border-yellow-500">
+          <p className="text-sm text-gray-800">
+            <strong>🎯 Strategy:</strong> Post the same viral video idea on all 5 platforms → Diversify income streams → Amplify reach.
+            <br />
+            <strong>Cost:</strong> $0.15 API cost per video
+            <br />
+            <strong>Net Revenue (Conservative):</strong> $94.85 - $489.85 per video (100-3,250x ROI)
+          </p>
         </div>
       </div>
 

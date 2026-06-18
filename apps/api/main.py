@@ -550,6 +550,25 @@ Requirements:
 - Captions helpful (many watch with sound off at work)
 - Focus on thought leadership, not just promotion
 - End with engagement question to drive comments"""
+    },
+
+    "facebook": {
+        "duration": "30-120 sec",
+        "aspect_ratio": "1:1 or 16:9",
+        "format": """Create a Facebook video script (60-90 seconds, broad appeal):
+- HOOK (0-2 sec): Relatable moment or surprising fact
+- STORY (2-40 sec): Tell a compelling story with emotional arc
+- VALUE (40-75 sec): Deliver utility, humor, or inspiration
+- ENGAGEMENT (75-85 sec): Poll, question, or call for shares
+- CTA (85-90 sec): Like, share, follow page, or visit link
+
+Requirements:
+- Square (1:1) or landscape (16:9) aspect ratio
+- Works with sound OFF (captions critical)
+- Emotional resonance for 35-65 year old demographic (largest FB audience)
+- Encourage shares and comments (Facebook algorithm loves engagement)
+- Include text overlays and emoji for visual interest
+- Can be slightly longer format (older audiences watch longer)"""
     }
 }
 
@@ -1331,7 +1350,7 @@ async def multi_platform(db: Session = Depends(get_db)):
 
         # Step 3: Generate scripts for each platform
         platforms_data = {}
-        for platform in ["tiktok", "reels", "youtube_shorts", "linkedin"]:
+        for platform in ["tiktok", "reels", "youtube_shorts", "linkedin", "facebook"]:
             try:
                 framework = random.choice(list(SCRIPT_FRAMEWORKS.keys()))
                 template = PLATFORM_TEMPLATES.get(platform, {}).get("format", "")
