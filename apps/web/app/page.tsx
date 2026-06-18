@@ -84,16 +84,31 @@ export default function Dashboard() {
           <h2 className="text-3xl font-bold">Welcome to Your Content Journey</h2>
           <span className="text-3xl">🚀</span>
         </div>
-        <p className="text-gray-700 mb-6">Start by letting AI pick everything for you, or build step-by-step</p>
-        <button
-          onClick={() => router.push("/auto")}
-          className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-4 px-6 rounded-lg transition-all text-lg mb-4"
-        >
-          ✨ AI Picks Everything (Fastest)
-        </button>
-        <p className="text-sm text-gray-600 text-center">
-          AI will instantly pick a trending niche, generate ideas, write a script, and create assets
-        </p>
+        <p className="text-gray-700 mb-6">Choose your automation level:</p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <button
+            onClick={() => router.push("/auto")}
+            className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-bold py-4 px-6 rounded-lg transition-all"
+          >
+            ✨ AI Picks Everything
+          </button>
+          <button
+            onClick={() => router.push("/full-auto")}
+            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-4 px-6 rounded-lg transition-all"
+          >
+            🤖 Full Automation
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-gray-600">
+          <p>
+            <strong>Basic:</strong> Niche, ideas, script, assets. You record voiceover & handle editing.
+          </p>
+          <p>
+            <strong>Full:</strong> Generates voiceover, B-roll, & thumbnail. You just assemble the video.
+          </p>
+        </div>
       </div>
 
       <div className="card mb-8">
