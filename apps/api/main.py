@@ -116,6 +116,7 @@ class Voice(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     name = Column(String)
     file_path = Column(String)
+    elevenlabs_voice_id = Column(String, nullable=True)  # ElevenLabs voice ID after cloning
     duration = Column(Integer, default=0)  # seconds
     is_default = Column(String, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -205,13 +206,25 @@ def get_db():
         db.close()
 
 # Automation helpers
-async def generate_voice(script_text: str) -> str:
-    """Generate voiceover using ElevenLabs"""
+async def generate_voice(script_text: str, user_id: int = 1, db: Session = None) -> str:
+    """Generate voiceover using ElevenLabs with user's cloned voice if available"""
     if not ELEVENLABS_API_KEY:
         return ""
 
     try:
         import requests
+
+        # Check if user has a cloned voice with ElevenLabs voice ID
+        voice_id = "21m00Tcm4TlvDq8ikWAM"  # Default male voice
+        if db:
+            user_voice = db.query(Voice).filter(
+                Voice.user_id == user_id,
+                Voice.is_default == True,
+                Voice.elevenlabs_voice_id != None
+            ).first()
+            if user_voice and user_voice.elevenlabs_voice_id:
+                voice_id = user_voice.elevenlabs_voice_id
+
         headers = {"xi-api-key": ELEVENLABS_API_KEY}
         data = {
             "text": script_text,
@@ -222,7 +235,7 @@ async def generate_voice(script_text: str) -> str:
         }
 
         response = requests.post(
-            "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM",
+            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
             headers=headers,
             json=data
         )
@@ -980,16 +993,47 @@ async def auto_workflow(db: Session = Depends(get_db)):
         }
     }
 
-@app.post("/voices/upload")
-async def upload_voice(user_id: int = 1, db: Session = Depends(get_db)):
-    """Upload cloned voice file for video generation"""
+@app.post("/voices/clone")
+async def clone_voice(name: str = "My Voice", user_id: int = 1, db: Session = Depends(get_db)):
+    """Clone a voice from uploaded MP3 to ElevenLabs"""
+    if not ELEVENLABS_API_KEY:
+        raise HTTPException(status_code=400, detail="ELEVENLABS_API_KEY not configured")
+
     try:
-        # For now, accept voice file metadata
-        # In production, this would handle file upload
+        import requests
+        import os
+
+        # Look for uploaded voice file (user should upload to /tmp/user_{user_id}_voice.mp3)
+        voice_file = f"/tmp/user_{user_id}_voice.mp3"
+        if not os.path.exists(voice_file):
+            raise Exception(f"Voice file not found at {voice_file}. Upload MP3 first.")
+
+        # Clone voice to ElevenLabs
+        headers = {"xi-api-key": ELEVENLABS_API_KEY}
+        with open(voice_file, "rb") as f:
+            files = {"files": f}
+            response = requests.post(
+                "https://api.elevenlabs.io/v1/voices/add",
+                headers=headers,
+                data={"name": name},
+                files={"files": f}
+            )
+
+        if response.status_code not in [200, 201]:
+            raise Exception(f"ElevenLabs API error: {response.text}")
+
+        voice_data = response.json()
+        elevenlabs_voice_id = voice_data.get("voice_id")
+
+        # Store in database
+        # First, mark any existing voices as not default
+        db.query(Voice).filter(Voice.user_id == user_id).update({Voice.is_default: False})
+
         voice = Voice(
             user_id=user_id,
-            name="My Cloned Voice",
-            file_path="/tmp/cloned_voice.mp3",
+            name=name,
+            file_path=voice_file,
+            elevenlabs_voice_id=elevenlabs_voice_id,
             is_default=True
         )
         db.add(voice)
@@ -999,10 +1043,23 @@ async def upload_voice(user_id: int = 1, db: Session = Depends(get_db)):
         return {
             "status": "success",
             "voice_id": voice.id,
-            "message": "Voice uploaded successfully. Will be used for all future generations."
+            "elevenlabs_voice_id": elevenlabs_voice_id,
+            "message": f"Voice '{name}' cloned to ElevenLabs. All future videos will use this voice!"
         }
     except Exception as e:
         db.rollback()
+        raise HTTPException(status_code=500, detail=f"Voice cloning error: {str(e)}")
+
+@app.post("/voices/upload")
+async def upload_voice_file(user_id: int = 1):
+    """Receive voice file upload (called by frontend before cloning)"""
+    try:
+        # This is a placeholder - in production, use FastAPI UploadFile
+        return {
+            "status": "success",
+            "message": "Voice file received. Ready to clone to ElevenLabs. Call /voices/clone next."
+        }
+    except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
 
 @app.get("/voices/list")
@@ -1112,8 +1169,8 @@ async def full_automation(db: Session = Depends(get_db)):
         if user_voice and os.path.exists(user_voice.file_path):
             voice_file = user_voice.file_path
         else:
-            # Fallback: generate voiceover if no voice uploaded
-            voice_file = await generate_voice(script_data["full_script"])
+            # Generate voiceover using cloned voice if available
+            voice_file = await generate_voice(script_data["full_script"], user_id=1, db=db)
 
         # Step 3: Fetch B-roll
         broll_data = await fetch_broll(best_idea.title, count=3)
