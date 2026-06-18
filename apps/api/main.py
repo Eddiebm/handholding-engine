@@ -1829,6 +1829,45 @@ Only return JSON."""
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hashtag generation error: {str(e)}")
 
+@app.post("/api/captions/generate")
+async def generate_video_captions(script_text: str, platform: str = "tiktok"):
+    """Generate captions from script (quick captioning for videos)"""
+    try:
+        # For speed, use script as base for captions
+        # In production, would use speech-to-text on voiceover
+        lines = script_text.split("\n")
+
+        # Format captions based on platform
+        if platform in ["tiktok", "reels", "youtube_shorts"]:
+            # Short, punchy captions (max 42 chars per line for vertical video)
+            captions = []
+            current_caption = ""
+
+            for line in lines:
+                if len(current_caption) + len(line) > 42:
+                    if current_caption:
+                        captions.append(current_caption)
+                    current_caption = line[:42]
+                else:
+                    current_caption += " " + line if current_caption else line
+
+            if current_caption:
+                captions.append(current_caption)
+        else:
+            # Longer captions for horizontal video
+            captions = [line for line in lines if line.strip()]
+
+        return {
+            "status": "success",
+            "platform": platform,
+            "captions": captions[:50],  # Cap at 50 caption segments
+            "total_captions": len(captions),
+            "format": "srt",  # SubRip format
+            "note": "Use these captions in your video editor or upload directly"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Caption generation failed: {str(e)}")
+
 @app.post("/api/schedule/recommend")
 async def recommend_posting_schedule(niche: str, platforms: list = ["tiktok", "reels", "youtube_shorts"], db: Session = Depends(get_db)):
     """Recommend optimal posting times by platform and niche"""

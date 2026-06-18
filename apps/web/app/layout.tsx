@@ -19,10 +19,10 @@ export default function RootLayout({
             <a href="/" className="text-2xl font-bold hover:text-blue-100">Handholding</a>
             <div className="space-x-4 text-sm">
               <a href="/" className="hover:text-blue-100">Dashboard</a>
+              <a href="/calendar" className="hover:text-blue-100">📅 Calendar</a>
+              <a href="/batch" className="hover:text-blue-100">🚀 Batch</a>
               <a href="/admin" className="hover:text-blue-100">📊 Admin</a>
               <a href="/optimize" className="hover:text-blue-100">✨ Optimize</a>
-              <a href="/voice" className="hover:text-blue-100">🎙️ Voice</a>
-              <a href="/multi-platform" className="hover:text-blue-100">📱 Multi</a>
             </div>
           </div>
         </nav>
