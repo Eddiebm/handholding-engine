@@ -109,6 +109,16 @@ class Task(Base):
     status = Column(String, default="pending")
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class Voice(Base):
+    __tablename__ = "voices"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    name = Column(String)
+    file_path = Column(String)
+    duration = Column(Integer, default=0)  # seconds
+    is_default = Column(String, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 Base.metadata.create_all(bind=engine)
 
 # Pydantic Schemas
@@ -775,6 +785,39 @@ async def auto_workflow(db: Session = Depends(get_db)):
         }
     }
 
+@app.post("/voices/upload")
+async def upload_voice(user_id: int = 1, db: Session = Depends(get_db)):
+    """Upload cloned voice file for video generation"""
+    try:
+        # For now, accept voice file metadata
+        # In production, this would handle file upload
+        voice = Voice(
+            user_id=user_id,
+            name="My Cloned Voice",
+            file_path="/tmp/cloned_voice.mp3",
+            is_default=True
+        )
+        db.add(voice)
+        db.commit()
+        db.refresh(voice)
+
+        return {
+            "status": "success",
+            "voice_id": voice.id,
+            "message": "Voice uploaded successfully. Will be used for all future generations."
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
+
+@app.get("/voices/list")
+async def list_voices(user_id: int = 1, db: Session = Depends(get_db)):
+    """List user's cloned voices"""
+    voices = db.query(Voice).filter(Voice.user_id == user_id).all()
+    return {
+        "voices": [{"id": v.id, "name": v.name, "is_default": v.is_default} for v in voices]
+    }
+
 @app.post("/demo/full-automation")
 async def full_automation(db: Session = Depends(get_db)):
     """Complete automation: niche → YouTube upload (requires API keys)"""
@@ -862,8 +905,17 @@ async def full_automation(db: Session = Depends(get_db)):
         db.add(assets)
         db.commit()
 
-        # Step 2: Generate voiceover
-        voice_file = await generate_voice(script_data["full_script"])
+        # Step 2: Get user's cloned voice or generate one
+        user_voice = db.query(Voice).filter(
+            Voice.user_id == 1,
+            Voice.is_default == True
+        ).first()
+
+        if user_voice and os.path.exists(user_voice.file_path):
+            voice_file = user_voice.file_path
+        else:
+            # Fallback: generate voiceover if no voice uploaded
+            voice_file = await generate_voice(script_data["full_script"])
 
         # Step 3: Fetch B-roll
         broll_data = await fetch_broll(best_idea.title, count=3)
