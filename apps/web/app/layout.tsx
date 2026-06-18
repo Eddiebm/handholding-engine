@@ -16,12 +16,13 @@ export default function RootLayout({
       <body>
         <nav className="bg-blue-600 text-white shadow-lg">
           <div className="container flex justify-between items-center py-4">
-            <h1 className="text-2xl font-bold">Handholding Content Engine</h1>
+            <a href="/" className="text-2xl font-bold hover:text-blue-100">Handholding</a>
             <div className="space-x-4 text-sm">
               <a href="/" className="hover:text-blue-100">Dashboard</a>
               <a href="/voice" className="hover:text-blue-100">🎙️ Voice</a>
               <a href="/auto" className="hover:text-blue-100">Auto</a>
               <a href="/full-auto" className="hover:text-blue-100">Full Auto</a>
+              <a href="/landing" className="hover:text-blue-100">About</a>
             </div>
           </div>
         </nav>
