@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 export async function POST(request: Request) {
   const url = new URL(request.url);
   const path = url.searchParams.get("path") || "";
