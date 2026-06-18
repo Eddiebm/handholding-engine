@@ -1,11 +1,7 @@
 import axios from "axios";
 
-// Use Next.js proxy endpoint instead of direct backend URL
-const API_URL = "/api/proxy";
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: "/api/proxy",
   headers: {
     "Content-Type": "application/json",
   },
@@ -13,9 +9,17 @@ const api = axios.create({
 
 // Intercept requests to add path parameter
 api.interceptors.request.use((config) => {
-  if (config.url) {
-    config.url = `?path=${encodeURIComponent(config.url)}`;
+  let path = config.url || "";
+
+  // Handle query parameters for specific endpoints
+  if (config.method === "post" && config.data) {
+    if (path === "/asset-packs/generate" && config.data.script_id) {
+      path = `/asset-packs/generate?script_id=${config.data.script_id}`;
+      config.data = undefined;
+    }
   }
+
+  config.url = `?path=${encodeURIComponent(path)}`;
   return config;
 });
 
