@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { coach, niches } from "@/lib/api";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 interface NextAction {
   task_text: string;
@@ -19,6 +20,7 @@ interface Niche {
 }
 
 export default function Dashboard() {
+  const router = useRouter();
   const [nextAction, setNextAction] = useState<NextAction | null>(null);
   const [niche, setNiche] = useState<Niche | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,8 +79,25 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-2xl mx-auto">
+      <div className="card bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-300 mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-3xl font-bold">Welcome to Your Content Journey</h2>
+          <span className="text-3xl">🚀</span>
+        </div>
+        <p className="text-gray-700 mb-6">Start by letting AI pick everything for you, or build step-by-step</p>
+        <button
+          onClick={() => router.push("/auto")}
+          className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-4 px-6 rounded-lg transition-all text-lg mb-4"
+        >
+          ✨ AI Picks Everything (Fastest)
+        </button>
+        <p className="text-sm text-gray-600 text-center">
+          AI will instantly pick a trending niche, generate ideas, write a script, and create assets
+        </p>
+      </div>
+
       <div className="card mb-8">
-        <h2 className="text-3xl font-bold mb-4">Welcome to Your Content Journey</h2>
+        <h3 className="text-xl font-bold mb-4 text-gray-700">Or Build Step-by-Step</h3>
 
         {niche && (
           <div className="mb-6 p-4 bg-blue-50 rounded-lg">
