@@ -4,8 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 export default function AutoPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -15,7 +13,7 @@ export default function AutoPage() {
   useEffect(() => {
     const generate = async () => {
       try {
-        const response = await axios.post(`${API_URL}/demo/auto-workflow`);
+        const response = await axios.post("/api/proxy?path=/demo/auto-workflow");
         setResult(response.data);
         setLoading(false);
       } catch (err: any) {
