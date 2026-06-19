@@ -15,7 +15,7 @@ export default function FullAutoPage() {
     const generate = async () => {
       try {
         setProgress("🤖 Generating workflow...");
-        const response = await axios.post("/api/proxy?path=%2Fdemo%2Ffull-automation");
+        const response = await axios.post("https://api.theworldagency.uk/handholding/demo/full-automation", {}, { timeout: 180000 });
         setResult(response.data);
         setLoading(false);
         setProgress("");
