@@ -24,14 +24,13 @@ const defaultClip = (): ClipState => ({
 });
 
 export default function VoicePage() {
-  const [voices, setVoices] = useState<any[]>([]);
-  const [loadingVoices, setLoadingVoices] = useState(true);
   const [clips, setClips] = useState<Record<ClipType, ClipState>>({
     intro: defaultClip(),
     outro: defaultClip(),
   });
   const [hasClips, setHasClips] = useState({ intro: false, outro: false });
   const [uploading, setUploading] = useState<ClipType | null>(null);
+  const [cloneStatus, setCloneStatus] = useState<{ cloned: boolean; voice_id: string | null }>({ cloned: false, voice_id: null });
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -39,16 +38,15 @@ export default function VoicePage() {
   const activeClipRef = useRef<ClipType | null>(null);
 
   useEffect(() => {
-    loadVoices();
     checkHasClips();
+    checkCloneStatus();
   }, []);
 
-  const loadVoices = async () => {
+  const checkCloneStatus = async () => {
     try {
-      const res = await axios.get("/api/proxy?path=%2Fvoices%2Flist");
-      setVoices(res.data.voices || []);
+      const res = await axios.get(`${API_URL}/voices/clone-status`);
+      setCloneStatus(res.data);
     } catch {}
-    finally { setLoadingVoices(false); }
   };
 
   const checkHasClips = async () => {
@@ -110,11 +108,12 @@ export default function VoicePage() {
       const formData = new FormData();
       formData.append("clip_type", type);
       formData.append("file", clip.blob, `${type}.webm`);
-      await axios.post(`${API_URL}/voices/record-clip`, formData, {
+      const { data } = await axios.post(`${API_URL}/voices/record-clip`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setClips(c => ({ ...c, [type]: { ...c[type], uploaded: true } }));
       setHasClips(h => ({ ...h, [type]: true }));
+      if (data.voice_id) setCloneStatus({ cloned: true, voice_id: data.voice_id });
     } catch {
       alert("Upload failed. Try again.");
     } finally {
@@ -234,25 +233,20 @@ export default function VoicePage() {
         />
       </div>
 
-      {/* ElevenLabs Voice */}
-      <div className="card bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 mb-6">
-        <h2 className="text-xl font-bold mb-2">🤖 AI Voice (ElevenLabs)</h2>
-        <p className="text-sm text-gray-700 mb-4">
-          Your cloned voice handles the full script. The recordings above are spliced at the start and end.
+      {/* ElevenLabs clone status */}
+      <div className={`card border-2 mb-6 ${cloneStatus.cloned ? "border-purple-400 bg-purple-50" : "border-gray-200"}`}>
+        <h2 className="text-xl font-bold mb-2">🤖 Voice Clone (ElevenLabs)</h2>
+        <p className="text-sm text-gray-600 mb-3">
+          Your recorded clip is sent to ElevenLabs to clone your voice for the full script body. The intro + outro are spliced on top.
         </p>
-        {!loadingVoices && (
-          voices.length === 0 ? (
-            <p className="text-sm text-gray-500">No ElevenLabs voice configured yet. Run Full Auto once to clone.</p>
-          ) : (
-            <div className="space-y-2">
-              {voices.map((v) => (
-                <div key={v.id} className="flex justify-between items-center bg-white rounded p-3">
-                  <span className="font-medium">{v.name}</span>
-                  {v.is_default && <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">Active</span>}
-                </div>
-              ))}
-            </div>
-          )
+        {cloneStatus.cloned ? (
+          <div className="flex items-center gap-2 text-purple-700 font-semibold">
+            <span>✅ Voice cloned — Full Auto will use your voice</span>
+          </div>
+        ) : (
+          <p className="text-sm text-amber-700">
+            ⚠️ No clone yet — save a recording above and it will be cloned automatically.
+          </p>
         )}
       </div>
     </div>
