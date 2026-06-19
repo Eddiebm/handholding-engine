@@ -30,7 +30,6 @@ export default function VoicePage() {
   });
   const [hasClips, setHasClips] = useState({ intro: false, outro: false });
   const [uploading, setUploading] = useState<ClipType | null>(null);
-  const [cloneStatus, setCloneStatus] = useState<{ cloned: boolean; voice_id: string | null }>({ cloned: false, voice_id: null });
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -39,15 +38,7 @@ export default function VoicePage() {
 
   useEffect(() => {
     checkHasClips();
-    checkCloneStatus();
   }, []);
-
-  const checkCloneStatus = async () => {
-    try {
-      const res = await axios.get(`${API_URL}/voices/clone-status`);
-      setCloneStatus(res.data);
-    } catch {}
-  };
 
   const checkHasClips = async () => {
     try {
@@ -113,7 +104,6 @@ export default function VoicePage() {
       });
       setClips(c => ({ ...c, [type]: { ...c[type], uploaded: true } }));
       setHasClips(h => ({ ...h, [type]: true }));
-      if (data.voice_id) setCloneStatus({ cloned: true, voice_id: data.voice_id });
     } catch {
       alert("Upload failed. Try again.");
     } finally {
@@ -233,21 +223,13 @@ export default function VoicePage() {
         />
       </div>
 
-      {/* ElevenLabs clone status */}
-      <div className={`card border-2 mb-6 ${cloneStatus.cloned ? "border-purple-400 bg-purple-50" : "border-gray-200"}`}>
-        <h2 className="text-xl font-bold mb-2">🤖 Voice Clone (ElevenLabs)</h2>
-        <p className="text-sm text-gray-600 mb-3">
-          Your recorded clip is sent to ElevenLabs to clone your voice for the full script body. The intro + outro are spliced on top.
+      {/* Voiceover info */}
+      <div className="card border-2 border-blue-200 bg-blue-50 mb-6">
+        <h2 className="text-xl font-bold mb-2">🔊 How Voiceover Works</h2>
+        <p className="text-sm text-gray-700">
+          Your <strong>intro + outro clips</strong> are spliced onto every video to keep your channel authentic.
+          The main script body uses <strong>OpenAI TTS</strong> (natural AI voice, ~$0.04/video).
         </p>
-        {cloneStatus.cloned ? (
-          <div className="flex items-center gap-2 text-purple-700 font-semibold">
-            <span>✅ Voice cloned — Full Auto will use your voice</span>
-          </div>
-        ) : (
-          <p className="text-sm text-amber-700">
-            ⚠️ No clone yet — save a recording above and it will be cloned automatically.
-          </p>
-        )}
       </div>
     </div>
   );
