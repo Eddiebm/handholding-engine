@@ -24,10 +24,12 @@ export default function FullAutoPage() {
   const [live, setLive] = useState<any>({});
   const [error, setError] = useState("");
   const [result, setResult] = useState<any>(null);
+  const [started, setStarted] = useState(false);
   const [runKey, setRunKey] = useState(0);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    if (!started) return;
     setStep("Starting...");
     setLive({});
     setError("");
@@ -63,13 +65,27 @@ export default function FullAutoPage() {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [runKey]);
 
+  if (!started) {
+    return (
+      <div className="max-w-2xl mx-auto text-center py-16 space-y-6">
+        <h1 className="text-4xl font-bold">⚡ Full Auto</h1>
+        <p className="text-gray-500 text-lg">Pick a niche, write a script, generate voiceover, fetch B-roll, assemble a video — all in one click.</p>
+        <ul className="text-left card space-y-2 text-sm text-gray-600">
+          {STEPS.map(s => <li key={s} className="flex items-center gap-2"><span className="text-gray-300">○</span>{s.replace("...", "")}</li>)}
+        </ul>
+        <p className="text-sm text-gray-400">~2–3 minutes · ~$0.07 per video</p>
+        <button onClick={() => setStarted(true)} className="btn text-lg px-10 py-4">Generate Video</button>
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="card bg-red-50 border-2 border-red-300">
           <h1 className="text-2xl font-bold text-red-900 mb-3">Automation Failed</h1>
           <p className="text-red-800 mb-4">{error}</p>
-          <button onClick={() => setRunKey(k => k + 1)} className="btn">Try Again</button>
+          <button onClick={() => { setStarted(false); setError(""); }} className="btn">Try Again</button>
         </div>
       </div>
     );
@@ -204,7 +220,7 @@ export default function FullAutoPage() {
 
       <div className="grid grid-cols-2 gap-4">
         <button onClick={() => router.push("/")} className="btn btn-secondary">← Home</button>
-        <button onClick={() => setRunKey(k => k + 1)} className="btn">⚡ Run Again</button>
+        <button onClick={() => { setStarted(false); setResult(null); }} className="btn">⚡ Run Again</button>
       </div>
     </div>
   );
