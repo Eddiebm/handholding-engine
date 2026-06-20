@@ -23,9 +23,14 @@ export default function FullAutoPage() {
   const [step, setStep] = useState("Starting...");
   const [error, setError] = useState("");
   const [result, setResult] = useState<any>(null);
+  const [runKey, setRunKey] = useState(0);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    setStep("Starting...");
+    setError("");
+    setResult(null);
+
     const run = async () => {
       try {
         const { data } = await axios.post(`${API}/demo/full-automation/start`, {});
@@ -53,7 +58,7 @@ export default function FullAutoPage() {
 
     run();
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, []);
+  }, [runKey]);
 
   if (error) {
     return (
@@ -162,7 +167,7 @@ export default function FullAutoPage() {
 
       <div className="grid grid-cols-2 gap-4">
         <button onClick={() => router.push("/")} className="btn btn-secondary">Back to Home</button>
-        <button onClick={() => { setResult(null); setStep("Starting..."); setError(""); }} className="btn">⚡ Run Again</button>
+        <button onClick={() => setRunKey(k => k + 1)} className="btn">⚡ Run Again</button>
       </div>
     </div>
   );
