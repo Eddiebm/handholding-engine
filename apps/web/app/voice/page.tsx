@@ -27,7 +27,20 @@ export default function VoicePage() {
   const [hasClips, setHasClips] = useState({ intro: false, outro: false });
   const [uploading, setUploading] = useState<ClipType | null>(null);
 
-  // Voice cloning state
+  // XTTS voice sample state (primary, free)
+  const [xttsHasSample, setXttsHasSample] = useState(false);
+  const [xttsFile, setXttsFile] = useState<File | null>(null);
+  const [xttsBlob, setXttsBlob] = useState<Blob | null>(null);
+  const [xttsUrl, setXttsUrl] = useState<string | null>(null);
+  const [xttsRecording, setXttsRecording] = useState(false);
+  const [xttsSeconds, setXttsSeconds] = useState(0);
+  const [xttsUploading, setXttsUploading] = useState(false);
+  const [xttsStatus, setXttsStatus] = useState("");
+  const xttsMediaRef = useRef<MediaRecorder | null>(null);
+  const xttsChunksRef = useRef<BlobPart[]>([]);
+  const xttsTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ElevenLabs cloned voice state (fallback)
   const [clonedVoice, setClonedVoice] = useState<ClonedVoice | null>(null);
   const [cloneFile, setCloneFile] = useState<File | null>(null);
   const [cloneName, setCloneName] = useState("My Voice");
@@ -49,7 +62,77 @@ export default function VoicePage() {
   useEffect(() => {
     checkHasClips();
     loadClonedVoice();
+    loadXttsSampleStatus();
   }, []);
+
+  const loadXttsSampleStatus = async () => {
+    try {
+      const { data } = await axios.get(`${API}/voices/sample`);
+      setXttsHasSample(data.has_sample);
+    } catch {}
+  };
+
+  const startXttsRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      xttsChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      xttsMediaRef.current = recorder;
+      recorder.ondataavailable = e => { if (e.data.size > 0) xttsChunksRef.current.push(e.data); };
+      recorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(xttsChunksRef.current, { type: "audio/webm" });
+        setXttsBlob(blob);
+        setXttsUrl(URL.createObjectURL(blob));
+        setXttsRecording(false);
+        if (xttsTimerRef.current) clearInterval(xttsTimerRef.current);
+      };
+      recorder.start();
+      setXttsRecording(true);
+      setXttsSeconds(0);
+      setXttsBlob(null);
+      setXttsUrl(null);
+      xttsTimerRef.current = setInterval(() => setXttsSeconds(s => s + 1), 1000);
+    } catch { alert("Microphone access denied."); }
+  };
+
+  const stopXttsRecording = () => {
+    if (xttsTimerRef.current) clearInterval(xttsTimerRef.current);
+    xttsMediaRef.current?.stop();
+  };
+
+  const submitXttsSample = async () => {
+    const src = xttsFile || (xttsBlob ? new File([xttsBlob], "voice.webm", { type: "audio/webm" }) : null);
+    if (!src) return;
+    setXttsUploading(true);
+    setXttsStatus("Uploading voice sample...");
+    try {
+      const form = new FormData();
+      form.append("file", src);
+      await axios.post(`${API}/voices/sample`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 60000,
+      });
+      setXttsHasSample(true);
+      setXttsStatus("Voice sample saved! All videos will use your cloned voice.");
+      setXttsFile(null);
+      setXttsBlob(null);
+      setXttsUrl(null);
+    } catch (e: any) {
+      setXttsStatus("Upload failed: " + (e.response?.data?.detail || e.message));
+    } finally {
+      setXttsUploading(false);
+    }
+  };
+
+  const deleteXttsSample = async () => {
+    if (!confirm("Remove your voice sample?")) return;
+    try {
+      await axios.delete(`${API}/voices/sample`);
+      setXttsHasSample(false);
+      setXttsStatus("Voice sample removed.");
+    } catch {}
+  };
 
   const loadClonedVoice = async () => {
     try {
@@ -233,11 +316,76 @@ export default function VoicePage() {
         <p className="text-gray-500">Clone your voice for AI narration, or record intro/outro clips.</p>
       </div>
 
-      {/* ── Voice Cloning ───────────────────────────────────────────────────── */}
+      {/* ── XTTS Voice Cloning (free, on-server) ───────────────────────────── */}
       <section>
-        <h2 className="text-xl font-bold mb-3">Clone Your Voice</h2>
+        <h2 className="text-xl font-bold mb-1">Clone Your Voice</h2>
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded font-medium">Free</span>
+          <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded font-medium">On-Server</span>
+        </div>
         <p className="text-sm text-gray-600 mb-4">
-          Record or upload 1–3 minutes of clean speech. ElevenLabs clones it and uses it for every video's narration.
+          Record or upload 1–3 minutes of clean speech. Your voice runs on the server (XTTS v2) — completely free, no API key needed.
+        </p>
+
+        {xttsHasSample ? (
+          <div className="card border-2 border-green-400 bg-green-50">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-green-700 font-bold text-lg">Active</span>
+                  <span className="text-xs bg-green-700 text-white px-2 py-0.5 rounded">XTTS v2</span>
+                </div>
+                <p className="text-sm text-green-800">Voice sample uploaded. All video narration will use your cloned voice.</p>
+              </div>
+              <button onClick={deleteXttsSample} className="btn bg-gray-400 hover:bg-gray-500 text-sm">Remove</button>
+            </div>
+          </div>
+        ) : (
+          <div className="card border-2 border-green-200 space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Record live (1–3 minutes recommended)</label>
+              {xttsUrl && <audio controls className="w-full mb-3"><source src={xttsUrl} /></audio>}
+              {xttsRecording ? (
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+                  <span className="text-red-600 font-semibold">Recording... {xttsSeconds}s</span>
+                  <button onClick={stopXttsRecording} className="btn bg-red-600 hover:bg-red-700 ml-auto">Stop</button>
+                </div>
+              ) : (
+                <button onClick={startXttsRecording} className="btn w-full">
+                  {xttsUrl ? "Re-record" : "Start Recording"}
+                </button>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Or upload an audio file</label>
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={e => { setXttsFile(e.target.files?.[0] || null); setXttsUrl(null); setXttsBlob(null); }}
+                className="w-full text-sm"
+              />
+              {xttsFile && <p className="text-xs text-gray-500 mt-1">{xttsFile.name} ({(xttsFile.size / 1024 / 1024).toFixed(1)} MB)</p>}
+            </div>
+            {(xttsFile || xttsBlob) && (
+              <button onClick={submitXttsSample} disabled={xttsUploading} className="btn bg-green-600 hover:bg-green-700 w-full">
+                {xttsUploading ? "Uploading..." : "Save Voice Sample"}
+              </button>
+            )}
+            {xttsStatus && (
+              <p className={`text-sm font-medium ${xttsStatus.includes("failed") ? "text-red-600" : "text-green-600"}`}>
+                {xttsStatus}
+              </p>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* ── ElevenLabs Voice Cloning (fallback) ─────────────────────────────── */}
+      <section>
+        <h2 className="text-xl font-bold mb-1">ElevenLabs Voice Clone</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Fallback option — used only if no XTTS sample is uploaded above. Requires an ElevenLabs API key.
         </p>
 
         {clonedVoice ? (
@@ -316,7 +464,7 @@ export default function VoicePage() {
         )}
       </section>
 
-      {/* ── Intro / Outro clips ─────────────────────────────────────────────── */}
+      {/* ── Intro / Outro clips ─────────────────────────────────────────── */}
       <section>
         <h2 className="text-xl font-bold mb-1">Intro & Outro Clips</h2>
         <p className="text-sm text-gray-600 mb-4">Short human clips spliced onto every video to avoid YouTube flags.</p>
