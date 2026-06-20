@@ -115,12 +115,15 @@ export default function FullAutoPage() {
         {result.automation_files?.voiceover && result.automation_files.voiceover !== "Not generated" ? (
           <div className="card border-l-4 border-blue-500">
             <h3 className="font-bold mb-2">🎙️ AI Voiceover</h3>
-            <audio controls className="w-full"><source src={result.automation_files.voiceover} type="audio/mpeg" /></audio>
+            <audio controls className="w-full">
+              <source src={`${API}${result.automation_files.voiceover}`} type="audio/mpeg" />
+            </audio>
+            <a href={`${API}${result.automation_files.voiceover}`} download className="text-sm text-blue-600 underline mt-2 inline-block">⬇️ Download MP3</a>
           </div>
         ) : (
           <div className="card border-l-4 border-gray-300 opacity-60">
             <h3 className="font-bold mb-1">🎙️ AI Voiceover</h3>
-            <p className="text-sm text-gray-500">{result.automation_files?.voiceover || "Not generated"}</p>
+            <p className="text-sm text-gray-500">Not generated</p>
           </div>
         )}
 
@@ -137,17 +140,22 @@ export default function FullAutoPage() {
         ) : (
           <div className="card border-l-4 border-gray-300 opacity-60">
             <h3 className="font-bold mb-1">📸 Thumbnail</h3>
-            <p className="text-sm text-gray-500">{result.automation_files?.thumbnail || "Not generated"}</p>
+            <p className="text-sm text-gray-500">Not generated</p>
           </div>
         )}
 
-        {result.automation_files?.final_video && result.automation_files.final_video !== "Not assembled" && (
+        {result.automation_files?.final_video && result.automation_files.final_video !== "Not assembled" ? (
           <div className="card border-l-4 border-green-500 bg-green-50">
             <h2 className="text-xl font-bold mb-3 text-green-700">✅ Final Video Ready</h2>
             <video controls className="w-full rounded-lg mb-4" style={{ maxHeight: "400px" }}>
-              <source src={result.automation_files.final_video} type="video/mp4" />
+              <source src={`${API}${result.automation_files.final_video}`} type="video/mp4" />
             </video>
-            <a href={result.automation_files.final_video} download className="btn w-full text-center block">⬇️ Download MP4</a>
+            <a href={`${API}${result.automation_files.final_video}`} download className="btn w-full text-center block">⬇️ Download MP4</a>
+          </div>
+        ) : (
+          <div className="card border-l-4 border-gray-300 opacity-60">
+            <h3 className="font-bold mb-1">🎬 Final Video</h3>
+            <p className="text-sm text-gray-500">Not assembled — voiceover required</p>
           </div>
         )}
       </div>
