@@ -21,6 +21,7 @@ const STEPS = [
 export default function FullAutoPage() {
   const router = useRouter();
   const [step, setStep] = useState("Starting...");
+  const [live, setLive] = useState<any>({});
   const [error, setError] = useState("");
   const [result, setResult] = useState<any>(null);
   const [runKey, setRunKey] = useState(0);
@@ -28,6 +29,7 @@ export default function FullAutoPage() {
 
   useEffect(() => {
     setStep("Starting...");
+    setLive({});
     setError("");
     setResult(null);
 
@@ -40,6 +42,7 @@ export default function FullAutoPage() {
           try {
             const { data: status } = await axios.get(`${API}/demo/full-automation/status/${jobId}`);
             setStep(status.step || "Running...");
+            if (status.live) setLive(status.live);
             if (status.status === "done") {
               clearInterval(pollRef.current!);
               setResult(status.result);
@@ -48,7 +51,7 @@ export default function FullAutoPage() {
               setError(status.error || "Automation failed");
             }
           } catch {
-            // polling blip — keep trying
+            // polling blip
           }
         }, 3000);
       } catch (err: any) {
@@ -64,9 +67,9 @@ export default function FullAutoPage() {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="card bg-red-50 border-2 border-red-300">
-          <h1 className="text-2xl font-bold text-red-900 mb-3">⚠️ Automation Failed</h1>
+          <h1 className="text-2xl font-bold text-red-900 mb-3">Automation Failed</h1>
           <p className="text-red-800 mb-4">{error}</p>
-          <button onClick={() => router.push("/full-auto")} className="btn">Try Again</button>
+          <button onClick={() => setRunKey(k => k + 1)} className="btn">Try Again</button>
         </div>
       </div>
     );
@@ -75,98 +78,132 @@ export default function FullAutoPage() {
   if (!result) {
     const currentIndex = STEPS.indexOf(step);
     return (
-      <div className="max-w-2xl mx-auto text-center py-16">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-6"></div>
-        <h1 className="text-2xl font-bold mb-2">Full Automation Running...</h1>
-        <p className="text-gray-500 mb-8">Takes 2–3 minutes. You can leave this tab open.</p>
-        <div className="card text-left space-y-3">
-          {STEPS.map((s, i) => {
-            const done = currentIndex > i;
-            const active = currentIndex === i;
-            return (
-              <div key={s} className={`flex items-center gap-3 text-sm ${done ? "text-green-700" : active ? "text-blue-700 font-semibold" : "text-gray-400"}`}>
-                <span className="w-5 text-center">
-                  {done ? "✓" : active ? "⏳" : "○"}
-                </span>
-                {s}
+      <div className="max-w-4xl mx-auto space-y-6 py-8">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <h1 className="text-2xl font-bold">Generating your video...</h1>
+          <p className="text-gray-500 text-sm mt-1">Takes 2–3 minutes</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Steps */}
+          <div className="card space-y-2">
+            {STEPS.map((s, i) => {
+              const done = currentIndex > i;
+              const active = currentIndex === i;
+              return (
+                <div key={s} className={`flex items-center gap-3 text-sm ${done ? "text-green-700" : active ? "text-blue-700 font-semibold" : "text-gray-400"}`}>
+                  <span className="w-5 text-center flex-shrink-0">{done ? "✓" : active ? "⏳" : "○"}</span>
+                  {s}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Live content */}
+          <div className="space-y-3">
+            {live.niche && (
+              <div className="card border-l-4 border-purple-500">
+                <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Niche</p>
+                <p className="font-bold text-lg">{live.niche}</p>
+                {live.audience && <p className="text-sm text-gray-600 mt-1">{live.audience}</p>}
+                {live.monetization && <p className="text-xs text-green-700 mt-1">💰 {live.monetization}</p>}
               </div>
-            );
-          })}
+            )}
+            {live.idea && (
+              <div className="card border-l-4 border-blue-500">
+                <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Video Idea</p>
+                <p className="font-bold">{live.idea}</p>
+                {live.idea_reason && <p className="text-sm text-gray-600 mt-1">{live.idea_reason}</p>}
+              </div>
+            )}
+            {live.hook && (
+              <div className="card border-l-4 border-orange-500">
+                <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Hook</p>
+                <p className="text-sm italic">"{live.hook}"</p>
+                {live.cta && <p className="text-xs text-gray-500 mt-2">CTA: {live.cta}</p>}
+              </div>
+            )}
+            {!live.niche && (
+              <div className="card border-l-4 border-gray-200 opacity-50">
+                <p className="text-sm text-gray-400">Content will appear here as it's generated...</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
   }
 
+  // Result page
+  const files = result.automation_files || {};
+  const hasVideo = files.final_video && files.final_video !== "Not assembled";
+  const hasVoice = files.voiceover && files.voiceover !== "Not generated";
+  const hasThumb = files.thumbnail && files.thumbnail !== "Not generated";
+
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="max-w-4xl mx-auto space-y-6 py-8">
       <div className="text-center">
-        <h1 className="text-4xl font-bold mb-2 text-purple-600">✨ Done!</h1>
-        <p className="text-gray-600">Video assets generated and ready to assemble</p>
+        <h1 className="text-3xl font-bold text-purple-600 mb-1">Done — ${result.cost?.total || "0.07"}</h1>
+        <p className="text-gray-500">{result.niche} · {result.idea}</p>
       </div>
 
-      <div className="card bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300">
-        <h2 className="text-2xl font-bold mb-4">📊 Summary</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <div><p className="text-sm text-gray-600">Niche</p><p className="font-bold text-lg">{result.niche}</p></div>
-          <div><p className="text-sm text-gray-600">Idea</p><p className="font-bold text-lg">{result.idea}</p></div>
-          <div><p className="text-sm text-gray-600">Total Cost</p><p className="font-bold text-lg text-green-600">${result.cost?.total || "0.07"}</p></div>
-          <div><p className="text-sm text-gray-600">Files</p><p className="font-bold text-lg">3 assets</p></div>
+      {/* Video player — top and centre */}
+      {hasVideo ? (
+        <div className="card bg-black p-0 overflow-hidden">
+          <video controls className="w-full" style={{ maxHeight: "420px" }}>
+            <source src={`${API}${files.final_video}`} type="video/mp4" />
+          </video>
+          <div className="p-4 flex gap-3">
+            <a href={`${API}${files.final_video}`} download className="btn flex-1 text-center">⬇️ Download MP4</a>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="card bg-gray-50 border-2 border-dashed border-gray-300 text-center py-8">
+          <p className="text-gray-500">Video assembly failed — voiceover and thumbnail saved below</p>
+        </div>
+      )}
 
-      <div className="space-y-4">
-        <h2 className="text-2xl font-bold">🎬 Generated Assets</h2>
-
-        {result.automation_files?.voiceover && result.automation_files.voiceover !== "Not generated" ? (
-          <div className="card border-l-4 border-blue-500">
-            <h3 className="font-bold mb-2">🎙️ AI Voiceover</h3>
+      {/* Assets row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Voiceover */}
+        {hasVoice ? (
+          <div className="card">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">🎙️ Voiceover</p>
             <audio controls className="w-full">
-              <source src={`${API}${result.automation_files.voiceover}`} type="audio/mpeg" />
+              <source src={`${API}${files.voiceover}`} type="audio/mpeg" />
             </audio>
-            <a href={`${API}${result.automation_files.voiceover}`} download className="text-sm text-blue-600 underline mt-2 inline-block">⬇️ Download MP3</a>
+            <a href={`${API}${files.voiceover}`} download className="text-xs text-blue-600 underline mt-2 inline-block">⬇️ Download MP3</a>
           </div>
         ) : (
-          <div className="card border-l-4 border-gray-300 opacity-60">
-            <h3 className="font-bold mb-1">🎙️ AI Voiceover</h3>
-            <p className="text-sm text-gray-500">Not generated</p>
+          <div className="card opacity-50">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">🎙️ Voiceover</p>
+            <p className="text-sm text-gray-400">Not generated</p>
           </div>
         )}
 
-        <div className="card border-l-4 border-green-500">
-          <h3 className="font-bold mb-1">🎬 B-Roll</h3>
-          <p className="text-sm text-gray-700">{result.automation_files?.broll_videos || 0} stock videos fetched from Pexels</p>
-        </div>
-
-        {result.automation_files?.thumbnail && result.automation_files.thumbnail !== "Not generated" ? (
-          <div className="card border-l-4 border-orange-500">
-            <h3 className="font-bold mb-2">📸 Thumbnail</h3>
-            <img src={`${API}${result.automation_files.thumbnail}`} alt="Thumbnail" className="w-full rounded-lg" />
+        {/* Thumbnail */}
+        {hasThumb ? (
+          <div className="card">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">📸 Thumbnail</p>
+            <img src={`${API}${files.thumbnail}`} alt="Thumbnail" className="w-full rounded" />
           </div>
         ) : (
-          <div className="card border-l-4 border-gray-300 opacity-60">
-            <h3 className="font-bold mb-1">📸 Thumbnail</h3>
-            <p className="text-sm text-gray-500">Not generated</p>
+          <div className="card opacity-50">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">📸 Thumbnail</p>
+            <p className="text-sm text-gray-400">Not generated</p>
           </div>
         )}
+      </div>
 
-        {result.automation_files?.final_video && result.automation_files.final_video !== "Not assembled" ? (
-          <div className="card border-l-4 border-green-500 bg-green-50">
-            <h2 className="text-xl font-bold mb-3 text-green-700">✅ Final Video Ready</h2>
-            <video controls className="w-full rounded-lg mb-4" style={{ maxHeight: "400px" }}>
-              <source src={`${API}${result.automation_files.final_video}`} type="video/mp4" />
-            </video>
-            <a href={`${API}${result.automation_files.final_video}`} download className="btn w-full text-center block">⬇️ Download MP4</a>
-          </div>
-        ) : (
-          <div className="card border-l-4 border-gray-300 opacity-60">
-            <h3 className="font-bold mb-1">🎬 Final Video</h3>
-            <p className="text-sm text-gray-500">Not assembled — voiceover required</p>
-          </div>
-        )}
+      {/* Script hook */}
+      <div className="card">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">🎬 B-Roll</p>
+        <p className="text-sm text-gray-700">{files.broll_videos || 0} stock clips fetched from Pexels</p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <button onClick={() => router.push("/")} className="btn btn-secondary">Back to Home</button>
+        <button onClick={() => router.push("/")} className="btn btn-secondary">← Home</button>
         <button onClick={() => setRunKey(k => k + 1)} className="btn">⚡ Run Again</button>
       </div>
     </div>
