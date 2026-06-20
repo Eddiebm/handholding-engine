@@ -132,7 +132,7 @@ export default function FullAutoPage() {
         {result.automation_files?.thumbnail && result.automation_files.thumbnail !== "Not generated" ? (
           <div className="card border-l-4 border-orange-500">
             <h3 className="font-bold mb-2">📸 Thumbnail</h3>
-            <img src={result.automation_files.thumbnail} alt="Thumbnail" className="w-full rounded-lg" />
+            <img src={`${API}${result.automation_files.thumbnail}`} alt="Thumbnail" className="w-full rounded-lg" />
           </div>
         ) : (
           <div className="card border-l-4 border-gray-300 opacity-60">
