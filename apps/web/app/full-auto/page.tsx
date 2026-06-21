@@ -1,231 +1,328 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
-import axios from "axios";
+import { useEffect, useRef, useState } from 'react';
 
 const API = "https://api.theworldagency.uk/handholding";
 
-const STEPS = [
-  "Generating niche...",
-  "Researching competitors...",
-  "Generating video ideas...",
-  "Writing script...",
-  "Building asset pack...",
-  "Generating voiceover...",
-  "Fetching B-roll...",
-  "Generating thumbnail...",
-  "Assembling video...",
+type Phase = 'idle' | 'running' | 'done' | 'error';
+
+interface StepData { label: string; detail: string; }
+
+const STEPS: StepData[] = [
+  { label: 'Generating niche',        detail: 'Analyzing trending topics & gaps' },
+  { label: 'Researching competitors', detail: 'Scanning top-performing channels' },
+  { label: 'Generating video ideas',  detail: 'Creating 10 unique concepts' },
+  { label: 'Writing script',          detail: 'Full narration with timestamps' },
+  { label: 'Building asset pack',     detail: 'Images, overlays & color palette' },
+  { label: 'Generating voiceover',    detail: 'ElevenLabs voice synthesis' },
+  { label: 'Fetching B-roll',         detail: 'Pexels & Unsplash video library' },
+  { label: 'Generating thumbnail',    detail: 'AI-optimised CTR design' },
+  { label: 'Assembling video',        detail: 'FFmpeg multi-track composition' },
 ];
 
-export default function FullAutoPage() {
-  const router = useRouter();
-  const [step, setStep] = useState("Starting...");
-  const [live, setLive] = useState<any>({});
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<any>(null);
-  const [started, setStarted] = useState(false);
-  const [runKey, setRunKey] = useState(0);
-  const pollRef = useRef<NodeJS.Timeout | null>(null);
+const NAV_ITEMS = [
+  { label: 'Dashboard', href: '/' },
+  { label: 'Autopilot', href: '/autopilot' },
+  { label: 'Intelligence', href: '/intelligence' },
+  { label: 'Capital', href: '/capital' },
+  { label: 'Full Auto', href: '/full-auto' },
+  { label: 'Calendar', href: '/calendar' },
+  { label: 'Batch', href: '/batch' },
+  { label: 'Admin', href: '/admin' },
+  { label: 'Optimize', href: '/optimize' },
+];
 
-  useEffect(() => {
-    if (!started) return;
-    setStep("Starting...");
-    setLive({});
-    setError("");
-    setResult(null);
+const RUST  = 'oklch(0.42 0.15 28)';
+const GREEN = 'oklch(0.45 0.12 155)';
 
-    const run = async () => {
-      try {
-        const { data } = await axios.post(`${API}/demo/full-automation/start`, {});
-        const jobId = data.job_id;
+function stepIndexFromBackend(stepName: string): number {
+  const clean = (stepName || '').replace(/\.\.\.$/,'').toLowerCase().trim();
+  return STEPS.findIndex(s => s.label.toLowerCase() === clean);
+}
 
-        pollRef.current = setInterval(async () => {
-          try {
-            const { data: status } = await axios.get(`${API}/demo/full-automation/status/${jobId}`);
-            setStep(status.step || "Running...");
-            if (status.live) setLive(status.live);
-            if (status.status === "done") {
-              clearInterval(pollRef.current!);
-              setResult(status.result);
-            } else if (status.status === "error") {
-              clearInterval(pollRef.current!);
-              setError(status.error || "Automation failed");
-            }
-          } catch (pollErr: any) {
-            if (pollErr?.response?.status === 404) {
-              clearInterval(pollRef.current!);
-              setError("Server restarted mid-job. Please try again.");
-            }
-            // transient network blip — keep polling
-          }
-        }, 3000);
-      } catch (err: any) {
-        setError(err.response?.data?.detail || err.message || "Failed to start");
-      }
-    };
-
-    run();
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [runKey]);
-
-  if (!started) {
-    return (
-      <div className="max-w-2xl mx-auto text-center py-16 space-y-6">
-        <h1 className="text-4xl font-bold">⚡ Full Auto</h1>
-        <p className="text-gray-500 text-lg">Pick a niche, write a script, generate voiceover, fetch B-roll, assemble a video — all in one click.</p>
-        <ul className="text-left card space-y-2 text-sm text-gray-600">
-          {STEPS.map(s => <li key={s} className="flex items-center gap-2"><span className="text-gray-300">○</span>{s.replace("...", "")}</li>)}
-        </ul>
-        <p className="text-sm text-gray-400">~2–3 minutes · ~$0.07 per video</p>
-        <button onClick={() => setStarted(true)} className="btn text-lg px-10 py-4">Generate Video</button>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="max-w-2xl mx-auto">
-        <div className="card bg-red-50 border-2 border-red-300">
-          <h1 className="text-2xl font-bold text-red-900 mb-3">Automation Failed</h1>
-          <p className="text-red-800 mb-4">{error}</p>
-          <button onClick={() => { setStarted(false); setError(""); }} className="btn">Try Again</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!result) {
-    const currentIndex = STEPS.indexOf(step);
-    return (
-      <div className="max-w-4xl mx-auto space-y-6 py-8">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <h1 className="text-2xl font-bold">Generating your video...</h1>
-          <p className="text-gray-500 text-sm mt-1">Takes 2–3 minutes</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Steps */}
-          <div className="card space-y-2">
-            {STEPS.map((s, i) => {
-              const done = currentIndex > i;
-              const active = currentIndex === i;
-              return (
-                <div key={s} className={`flex items-center gap-3 text-sm ${done ? "text-green-700" : active ? "text-blue-700 font-semibold" : "text-gray-400"}`}>
-                  <span className="w-5 text-center flex-shrink-0">{done ? "✓" : active ? "⏳" : "○"}</span>
-                  {s}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Live content */}
-          <div className="space-y-3">
-            {live.niche && (
-              <div className="card border-l-4 border-purple-500">
-                <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Niche</p>
-                <p className="font-bold text-lg">{live.niche}</p>
-                {live.audience && <p className="text-sm text-gray-600 mt-1">{live.audience}</p>}
-                {live.monetization && <p className="text-xs text-green-700 mt-1">💰 {live.monetization}</p>}
-              </div>
-            )}
-            {live.idea && (
-              <div className="card border-l-4 border-blue-500">
-                <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Video Idea</p>
-                <p className="font-bold">{live.idea}</p>
-                {live.idea_reason && <p className="text-sm text-gray-600 mt-1">{live.idea_reason}</p>}
-              </div>
-            )}
-            {live.hook && (
-              <div className="card border-l-4 border-orange-500">
-                <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Hook</p>
-                <p className="text-sm italic">"{live.hook}"</p>
-                {live.cta && <p className="text-xs text-gray-500 mt-2">CTA: {live.cta}</p>}
-              </div>
-            )}
-            {!live.niche && (
-              <div className="card border-l-4 border-gray-200 opacity-50">
-                <p className="text-sm text-gray-400">Content will appear here as it's generated...</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Result page
-  const files = result.automation_files || {};
-  const hasVideo = files.final_video && files.final_video !== "Not assembled";
-  const hasVoice = files.voiceover && files.voiceover !== "Not generated";
-  const hasThumb = files.thumbnail && files.thumbnail !== "Not generated";
-
+function Sidebar({ activeItem }: { activeItem: string }) {
   return (
-    <div className="max-w-4xl mx-auto space-y-6 py-8">
-      <div className="text-center">
-        <h1 className="text-3xl font-bold text-purple-600 mb-1">Done — ${result.cost?.total || "0.07"}</h1>
-        <p className="text-gray-500">{result.niche} · {result.idea}</p>
+    <nav style={{ width: 192, flexShrink: 0, borderRight: '1px solid #E8E3D8', display: 'flex', flexDirection: 'column', background: '#F9F8F5' }}>
+      <div style={{ padding: '26px 22px 20px', borderBottom: '1px solid #ECE8DF' }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#12100A', letterSpacing: '-0.01em' }}>Handholding</div>
+        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#C8C4B8', letterSpacing: '0.14em', marginTop: 4 }}>CONTENT ENGINE</div>
       </div>
-
-      {/* Video player — top and centre */}
-      {hasVideo ? (
-        <div className="card bg-black p-0 overflow-hidden">
-          <video controls className="w-full" style={{ maxHeight: "420px" }}>
-            <source src={`${API}${files.final_video}`} type="video/mp4" />
-          </video>
-          <div className="p-4 flex gap-3">
-            <a href={`${API}${files.final_video}`} download className="btn flex-1 text-center">⬇️ Download MP4</a>
-          </div>
-        </div>
-      ) : (
-        <div className="card bg-gray-50 border-2 border-dashed border-gray-300 text-center py-8">
-          <p className="text-gray-500">Video assembly failed — voiceover and thumbnail saved below</p>
-        </div>
-      )}
-
-      {/* Assets row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Voiceover */}
-        {hasVoice ? (
-          <div className="card">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">🎙️ Voiceover</p>
-            <audio controls className="w-full">
-              <source src={`${API}${files.voiceover}`} type="audio/mpeg" />
-            </audio>
-            <a href={`${API}${files.voiceover}`} download className="text-xs text-blue-600 underline mt-2 inline-block">⬇️ Download MP3</a>
-          </div>
-        ) : (
-          <div className="card opacity-50">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">🎙️ Voiceover</p>
-            <p className="text-sm text-gray-400">Not generated</p>
-          </div>
-        )}
-
-        {/* Thumbnail */}
-        {hasThumb ? (
-          <div className="card">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">📸 Thumbnail</p>
-            <img src={`${API}${files.thumbnail}`} alt="Thumbnail" className="w-full rounded" />
-          </div>
-        ) : (
-          <div className="card opacity-50">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">📸 Thumbnail</p>
-            <p className="text-sm text-gray-400">Not generated</p>
-          </div>
-        )}
+      <div style={{ padding: '16px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
+        {NAV_ITEMS.map(({ label, href }) => {
+          const active = label === activeItem;
+          return (
+            <a key={label} href={href} style={{
+              padding: '7px 10px', fontSize: 13, fontWeight: active ? 500 : 400,
+              color: active ? '#12100A' : '#A8A498', cursor: 'pointer',
+              letterSpacing: '-0.005em', textDecoration: 'none',
+              borderLeft: `1.5px solid ${active ? RUST : 'transparent'}`,
+              display: 'block',
+            }}>
+              {label}
+            </a>
+          );
+        })}
       </div>
+    </nav>
+  );
+}
 
-      {/* Script hook */}
-      <div className="card">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">🎬 B-Roll</p>
-        <p className="text-sm text-gray-700">{files.broll_videos || 0} stock clips fetched from Pexels</p>
+function StepTrack({ phase, currentStep }: { phase: Phase; currentStep: number }) {
+  return (
+    <div style={{ padding: '20px 56px 28px', borderTop: '1px solid #ECE8DF', display: 'flex', alignItems: 'center' }}>
+      {STEPS.map((step, i) => {
+        const done   = phase === 'done' || i < currentStep;
+        const active = phase === 'running' && i === currentStep;
+        const isLast = i === STEPS.length - 1;
+        return (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', flex: isLast ? undefined : 1 }}>
+            <div title={step.label} style={{
+              width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+              border: `1px solid ${active ? RUST : done ? GREEN : '#DDD8CE'}`,
+              background: active ? 'oklch(0.42 0.15 28 / 0.06)' : done ? 'oklch(0.45 0.12 155 / 0.07)' : 'transparent',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: done ? 11 : 9, fontWeight: done ? 600 : 400,
+              color: active ? RUST : done ? GREEN : '#C8C4B8',
+              transition: 'border-color 0.35s, background 0.35s, color 0.35s',
+            }}>
+              {done ? '✓' : String(i + 1).padStart(2, '0')}
+            </div>
+            {!isLast && (
+              <div style={{ flex: 1, height: 1, minWidth: 12, background: done ? 'oklch(0.45 0.12 155 / 0.3)' : '#E8E3D8', transition: 'background 0.45s ease' }} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const HERO_FONT: React.CSSProperties = {
+  fontFamily: "'Cormorant Garamond', serif",
+  fontStyle: 'italic', fontWeight: 300,
+  fontSize: 'clamp(52px, 5.8vw, 90px)',
+  lineHeight: 1.04, letterSpacing: '-0.03em',
+};
+
+function HeroIdle() {
+  return (
+    <div style={{ animation: 'fullAutoRise 0.65s ease' }}>
+      <div style={{ ...HERO_FONT, color: '#12100A', marginBottom: 26 }}>
+        Full automation.<br />One click.
       </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <button onClick={() => router.push("/")} className="btn btn-secondary">← Home</button>
-        <button onClick={() => { setStarted(false); setResult(null); }} className="btn">⚡ Run Again</button>
+      <div style={{ fontSize: 14, color: '#B0AA9E', lineHeight: 1.8, maxWidth: 340, marginBottom: 26 }}>
+        Pick a niche, write a script, generate voiceover, fetch B-roll, assemble a video.
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        {['~2–3 min', '$0.07 / video', '9 steps'].map((tag, i) => (
+          <span key={tag} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {i > 0 && <span style={{ color: '#DDD8CE' }}>·</span>}
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#C8C4B8', letterSpacing: '0.04em' }}>{tag}</span>
+          </span>
+        ))}
       </div>
     </div>
+  );
+}
+
+function HeroRunning({ currentStep, stepProgress }: { currentStep: number; stepProgress: number }) {
+  const step = STEPS[currentStep] ?? STEPS[0];
+  const fading = stepProgress < 10;
+  return (
+    <div style={{ opacity: fading ? 0.03 : 1, transform: fading ? 'translateY(16px)' : 'translateY(0)', transition: fading ? 'none' : 'opacity 0.5s ease, transform 0.5s ease' }}>
+      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#C8C4B8', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 22 }}>
+        Step {String(currentStep + 1).padStart(2, '0')} / 09
+      </div>
+      <div style={{ ...HERO_FONT, color: '#12100A', marginBottom: 20 }}>{step.label}.</div>
+      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#C0BAB0', letterSpacing: '0.02em', marginBottom: 36 }}>{step.detail}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, maxWidth: 380 }}>
+        <div style={{ flex: 1, height: 1, background: '#E8E3D8', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${Math.round(stepProgress)}%`, background: RUST, transition: 'width 55ms linear' }} />
+        </div>
+        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#C8C4B8', letterSpacing: '0.04em', width: 30, textAlign: 'right', flexShrink: 0 }}>
+          {Math.round(stepProgress)}%
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeroDone({ result, onReset }: { result: any; onReset: () => void }) {
+  const files = result?.automation_files ?? {};
+  const videoUrl = files.final_video ? `${API}${files.final_video}` : null;
+  return (
+    <div style={{ animation: 'fullAutoRise 0.5s ease' }}>
+      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: GREEN, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 22 }}>
+        All 9 steps complete
+      </div>
+      <div style={{ ...HERO_FONT, color: RUST, marginBottom: 12 }}>Done.</div>
+      {result?.niche && (
+        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#C0BAB0', letterSpacing: '0.02em', marginBottom: 28 }}>
+          {result.niche} · {result.idea} · ${result.cost?.total?.toFixed(2) ?? '0.07'}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        {videoUrl && (
+          <a href={videoUrl} download style={{
+            background: '#12100A', color: '#F9F8F5', border: 'none', padding: '11px 28px',
+            fontFamily: "'Epilogue', sans-serif", fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            letterSpacing: '0.06em', textTransform: 'uppercase', textDecoration: 'none', display: 'inline-block',
+          }}>Download</a>
+        )}
+        <a href="/watch" style={{
+          background: 'transparent', color: '#C0BAB0', border: '1px solid #DDD8CE', padding: '11px 28px',
+          fontFamily: "'Epilogue', sans-serif", fontSize: 12, cursor: 'pointer',
+          letterSpacing: '0.06em', textTransform: 'uppercase', textDecoration: 'none', display: 'inline-block',
+        }}>Watch</a>
+        <button onClick={onReset} style={{
+          background: 'transparent', color: '#C0BAB0', border: '1px solid #DDD8CE', padding: '11px 28px',
+          fontFamily: "'Epilogue', sans-serif", fontSize: 12, cursor: 'pointer',
+          letterSpacing: '0.06em', textTransform: 'uppercase',
+        }}>Generate Another</button>
+      </div>
+    </div>
+  );
+}
+
+export default function FullAutoPage() {
+  const [phase, setPhase]               = useState<Phase>('idle');
+  const [currentStep, setCurrentStep]   = useState(0);
+  const [stepProgress, setStepProgress] = useState(0);
+  const [result, setResult]             = useState<any>(null);
+  const [errorMsg, setErrorMsg]         = useState('');
+
+  const pollRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const progressRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastStepRef  = useRef(-1);
+
+  const stopPolling = () => {
+    if (pollRef.current)     clearInterval(pollRef.current);
+    if (progressRef.current) clearInterval(progressRef.current);
+  };
+
+  const startProgressTick = () => {
+    if (progressRef.current) clearInterval(progressRef.current);
+    setStepProgress(0);
+    progressRef.current = setInterval(() => {
+      setStepProgress(p => p < 85 ? p + 2 : p);
+    }, 300);
+  };
+
+  const handleGenerate = async () => {
+    setPhase('running');
+    setCurrentStep(0);
+    setStepProgress(0);
+    lastStepRef.current = -1;
+    startProgressTick();
+
+    let jobId: string;
+    try {
+      const r = await fetch(`${API}/demo/full-automation/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const d = await r.json();
+      jobId = d.job_id;
+    } catch {
+      setPhase('error'); setErrorMsg('Failed to connect to server'); return;
+    }
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch(`${API}/demo/full-automation/status/${jobId}`);
+        if (r.status === 404) {
+          stopPolling(); setPhase('error'); setErrorMsg('Job lost — server restarted. Try again.'); return;
+        }
+        const s = await r.json();
+        const idx = stepIndexFromBackend(s.step ?? '');
+        if (idx >= 0 && idx !== lastStepRef.current) {
+          lastStepRef.current = idx;
+          setCurrentStep(idx);
+          startProgressTick();
+        }
+        if (s.status === 'done') {
+          stopPolling();
+          setStepProgress(100);
+          setResult(s.result);
+          setPhase('done');
+        } else if (s.status === 'error') {
+          stopPolling();
+          setPhase('error');
+          setErrorMsg(s.error ?? 'Generation failed');
+        }
+      } catch { /* transient — keep polling */ }
+    }, 3000);
+  };
+
+  const handleCancel = () => {
+    stopPolling();
+    setPhase('idle');
+    setCurrentStep(0);
+    setStepProgress(0);
+    setResult(null);
+    setErrorMsg('');
+    lastStepRef.current = -1;
+  };
+
+  useEffect(() => () => stopPolling(), []);
+
+  return (
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,300;1,400&family=Epilogue:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+        @keyframes fullAutoRise { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes fullAutoBreathe { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.3; transform:scale(1.6); } }
+      `}</style>
+
+      {/* Full-viewport takeover — sits above layout nav */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', fontFamily: "'Epilogue', sans-serif", color: '#12100A', background: '#F9F8F5' }}>
+        <Sidebar activeItem="Full Auto" />
+
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', background: 'radial-gradient(ellipse 90% 45% at 50% -15%, #F0EBE0 0%, #F9F8F5 55%)' }}>
+
+          {/* Top bar */}
+          <div style={{ padding: '20px 56px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 13, opacity: 0.4 }}>⚡</span>
+              <span style={{ fontSize: 13, fontWeight: 500, color: '#A8A498', letterSpacing: '-0.01em' }}>Full Auto</span>
+              {phase === 'running' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 6 }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: RUST, display: 'block', flexShrink: 0, animation: 'fullAutoBreathe 1.8s ease-in-out infinite' }} />
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: RUST, letterSpacing: '0.05em' }}>{currentStep + 1} / 9</span>
+                </div>
+              )}
+            </div>
+            <div>
+              {phase === 'idle' && (
+                <button onClick={handleGenerate} style={{ display: 'flex', alignItems: 'center', gap: 9, background: '#12100A', color: '#F9F8F5', border: 'none', padding: '9px 22px', borderRadius: 0, fontFamily: "'Epilogue', sans-serif", fontSize: 12, fontWeight: 600, cursor: 'pointer', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  Generate
+                  <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor"><polygon points="1,1 10,5.5 1,10" /></svg>
+                </button>
+              )}
+              {phase === 'running' && (
+                <button onClick={handleCancel} style={{ background: 'transparent', color: '#C0BAB0', border: '1px solid #DDD8CE', padding: '9px 22px', borderRadius: 0, fontFamily: "'Epilogue', sans-serif", fontSize: 12, cursor: 'pointer', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Cancel</button>
+              )}
+              {(phase === 'done' || phase === 'error') && (
+                <button onClick={handleCancel} style={{ background: 'transparent', color: '#12100A', border: '1px solid #C8C4B8', padding: '9px 22px', borderRadius: 0, fontFamily: "'Epilogue', sans-serif", fontSize: 12, cursor: 'pointer', letterSpacing: '0.06em', textTransform: 'uppercase' }}>New Video</button>
+              )}
+            </div>
+          </div>
+
+          {/* Hero */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 56px', overflow: 'hidden' }}>
+            {phase === 'idle'    && <HeroIdle />}
+            {phase === 'running' && <HeroRunning currentStep={currentStep} stepProgress={stepProgress} />}
+            {phase === 'done'    && <HeroDone result={result} onReset={handleCancel} />}
+            {phase === 'error'   && (
+              <div style={{ animation: 'fullAutoRise 0.5s ease' }}>
+                <div style={{ ...HERO_FONT, color: '#C0392B', marginBottom: 20 }}>Failed.</div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#C0BAB0', marginBottom: 28 }}>{errorMsg}</div>
+                <button onClick={handleCancel} style={{ background: '#12100A', color: '#F9F8F5', border: 'none', padding: '11px 28px', fontFamily: "'Epilogue', sans-serif", fontSize: 12, fontWeight: 600, cursor: 'pointer', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Try Again</button>
+              </div>
+            )}
+          </div>
+
+          <StepTrack phase={phase} currentStep={currentStep} />
+        </div>
+      </div>
+    </>
   );
 }
