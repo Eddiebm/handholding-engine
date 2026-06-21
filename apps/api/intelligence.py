@@ -1053,3 +1053,172 @@ def get_cost_summary(db: Session = Depends(get_db)):
 async def score_idea(body: ScoreIdeaRequest, db: Session = Depends(get_db)):
     scores = await score_idea_competitiveness(body.title, body.niche_name, db)
     return scores
+
+
+# ── Market Intelligence ───────────────────────────────────────────────────────
+
+async def get_google_trends(keywords: list, timeframe: str = "now 7-d") -> dict:
+    """Get Google Trends interest over time for keywords. Returns {keyword: [scores]}"""
+    try:
+        from pytrends.request import TrendReq
+        pytrends = TrendReq(hl='en-US', tz=0, timeout=(10, 25))
+        pytrends.build_payload(keywords[:5], timeframe=timeframe, geo='US')
+        import asyncio
+        loop = asyncio.get_event_loop()
+        df = await loop.run_in_executor(None, pytrends.interest_over_time)
+        if df.empty:
+            return {k: 0 for k in keywords}
+        result = {}
+        for kw in keywords:
+            if kw in df.columns:
+                result[kw] = int(df[kw].mean())
+            else:
+                result[kw] = 0
+        return result
+    except Exception as e:
+        print(f"[TRENDS] Google Trends error: {e}", flush=True)
+        return {k: 50 for k in keywords}  # neutral fallback
+
+
+async def get_reddit_signals(subreddit: str, limit: int = 15) -> list:
+    """Pull hot posts from a subreddit as content signals."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=15, headers={"User-Agent": "MediaBot/1.0"}) as c:
+            r = await c.get(f"https://www.reddit.com/r/{subreddit}/hot.json?limit={limit}")
+            if r.status_code != 200:
+                return []
+            posts = r.json().get("data", {}).get("children", [])
+            return [
+                {
+                    "title": p["data"]["title"],
+                    "score": p["data"]["score"],
+                    "comments": p["data"]["num_comments"],
+                    "url": p["data"]["url"],
+                    "created": p["data"]["created_utc"],
+                }
+                for p in posts
+                if not p["data"].get("stickied")
+            ]
+    except Exception as e:
+        print(f"[REDDIT] Error: {e}", flush=True)
+        return []
+
+
+NICHE_SUBREDDITS = {
+    "personal_finance": ["personalfinance", "financialindependence", "investing"],
+    "ai_tools": ["artificial", "MachineLearning", "ChatGPT", "singularity"],
+    "health": ["fitness", "nutrition", "longevity", "supplements"],
+    "business": ["Entrepreneur", "smallbusiness", "sidehustle", "passive_income"],
+    "real_estate": ["realestateinvesting", "FirstTimeHomeBuyer", "REBubble"],
+    "luxury": ["Watches", "malefashionadvice", "BudgetAudiophile"],
+}
+
+NICHE_RPM = {
+    "personal_finance": 14.0,
+    "ai_tools": 11.0,
+    "health": 9.0,
+    "business": 12.0,
+    "real_estate": 20.0,
+    "luxury": 7.0,
+}
+
+async def score_niche_opportunity(niche_name: str, keywords: list, db) -> dict:
+    """
+    Score a niche by opportunity = demand x trend_velocity x monetization / competition.
+    Returns dict with component scores and final opportunity_score (0-100).
+    """
+    niche_key = niche_name.lower().replace(" ", "_")
+
+    # 1. Google Trends score (demand + velocity)
+    trends = await get_google_trends(keywords[:3])
+    trend_avg = sum(trends.values()) / max(len(trends), 1)
+
+    # 2. Reddit signal (community size = demand)
+    subs = NICHE_SUBREDDITS.get(niche_key, [niche_name])
+    reddit_posts = []
+    for sub in subs[:2]:
+        reddit_posts.extend(await get_reddit_signals(sub, limit=10))
+    reddit_score = min(100, len(reddit_posts) * 5 + sum(p["score"] for p in reddit_posts[:5]) / 100)
+
+    # 3. Monetization potential (RPM proxy)
+    rpm = NICHE_RPM.get(niche_key, 6.0)
+    monetization_score = min(100, (rpm / 20.0) * 100)
+
+    # 4. Competition (YouTube saturation — more results = more competition)
+    competition_score = 50  # default neutral if no API key
+
+    # 5. Opportunity score
+    opportunity = (trend_avg * 0.35 + reddit_score * 0.25 + monetization_score * 0.30 + (100 - competition_score) * 0.10)
+
+    # 6. Top Reddit topics as content ideas
+    top_topics = [p["title"] for p in sorted(reddit_posts, key=lambda x: x["score"], reverse=True)[:5]]
+
+    return {
+        "niche_name": niche_name,
+        "trend_score": round(trend_avg, 1),
+        "reddit_score": round(reddit_score, 1),
+        "monetization_score": round(monetization_score, 1),
+        "competition_score": round(competition_score, 1),
+        "opportunity_score": round(opportunity, 1),
+        "estimated_rpm": rpm,
+        "top_reddit_topics": top_topics,
+        "trend_data": trends,
+    }
+
+
+async def discover_new_niches(db) -> list:
+    """
+    Scan for new niche opportunities not currently in the portfolio.
+    Returns ranked list of niche opportunities.
+    """
+    CANDIDATE_NICHES = [
+        ("Personal Finance", ["investing", "budgeting", "debt payoff", "financial freedom"], ["personal_finance", "investing"]),
+        ("AI Tools", ["AI tools", "ChatGPT tips", "prompt engineering", "automation"], ["artificial", "ChatGPT"]),
+        ("Health & Longevity", ["longevity", "biohacking", "sleep optimization", "supplements"], ["longevity", "nutrition"]),
+        ("Business & Entrepreneurship", ["passive income", "side hustle", "online business", "dropshipping"], ["Entrepreneur", "passive_income"]),
+        ("Real Estate Investing", ["real estate investing", "rental income", "house hacking", "REITs"], ["realestateinvesting"]),
+        ("Luxury & Status", ["luxury watches", "wealth display", "expensive cars", "high net worth"], ["Watches"]),
+        ("Productivity & Systems", ["productivity system", "second brain", "notion setup", "time blocking"], ["productivity", "PKMS"]),
+        ("Crypto & Web3", ["crypto investing", "bitcoin", "DeFi", "NFT explained"], ["CryptoCurrency", "Bitcoin"]),
+        ("Career & Skills", ["high income skills", "career growth", "salary negotiation", "remote work"], ["cscareerquestions", "careerguidance"]),
+        ("Psychology & Mindset", ["psychology tricks", "manipulation tactics", "stoicism", "mindset"], ["psychology", "stoicism"]),
+    ]
+
+    results = []
+    for name, keywords, _ in CANDIDATE_NICHES[:5]:  # limit to 5 to avoid rate limits
+        try:
+            score = await score_niche_opportunity(name, keywords, db)
+            results.append(score)
+        except Exception as e:
+            print(f"[DISCOVER] Error scoring {name}: {e}", flush=True)
+
+    return sorted(results, key=lambda x: x["opportunity_score"], reverse=True)
+
+
+@intelligence_router.get("/market/trends")
+async def get_market_trends(keywords: str = "investing,AI tools,side hustle", db: Session = Depends(get_db)):
+    kw_list = [k.strip() for k in keywords.split(",")][:5]
+    result = await get_google_trends(kw_list)
+    return {"keywords": kw_list, "trends": result}
+
+@intelligence_router.get("/market/reddit/{niche_name}")
+async def get_reddit_niche_signals(niche_name: str, db: Session = Depends(get_db)):
+    niche_key = niche_name.lower().replace(" ", "_").replace("-", "_")
+    subs = NICHE_SUBREDDITS.get(niche_key, [niche_name])
+    posts = []
+    for sub in subs[:3]:
+        posts.extend(await get_reddit_signals(sub))
+    posts.sort(key=lambda x: x["score"], reverse=True)
+    return {"niche": niche_name, "subreddits": subs, "posts": posts[:20]}
+
+@intelligence_router.get("/market/discover")
+async def discover_niches(db: Session = Depends(get_db)):
+    results = await discover_new_niches(db)
+    return {"opportunities": results}
+
+@intelligence_router.post("/market/score")
+async def score_niche(niche_name: str, keywords: str, db: Session = Depends(get_db)):
+    kw_list = [k.strip() for k in keywords.split(",")][:5]
+    result = await score_niche_opportunity(niche_name, kw_list, db)
+    return result
