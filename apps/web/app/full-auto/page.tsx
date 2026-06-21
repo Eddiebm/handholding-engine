@@ -237,10 +237,12 @@ export default function FullAutoPage() {
     let jobId: string;
     try {
       const r = await fetch(`${API}/demo/full-automation/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (!r.ok) { setPhase('error'); setErrorMsg(`Server error ${r.status}`); return; }
       const d = await r.json();
+      if (!d.job_id) { setPhase('error'); setErrorMsg('No job_id returned'); return; }
       jobId = d.job_id;
-    } catch {
-      setPhase('error'); setErrorMsg('Failed to connect to server'); return;
+    } catch (e: any) {
+      setPhase('error'); setErrorMsg(`Connect failed: ${e?.message ?? e}`); return;
     }
 
     pollRef.current = setInterval(async () => {
