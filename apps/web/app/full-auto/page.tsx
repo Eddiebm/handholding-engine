@@ -7,7 +7,7 @@ import axios from "axios";
 const API = "https://api.theworldagency.uk/handholding";
 
 const STEPS = [
-  "Picking trending niche...",
+  "Generating niche...",
   "Researching competitors...",
   "Generating video ideas...",
   "Writing script...",
