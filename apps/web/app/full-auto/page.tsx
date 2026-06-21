@@ -52,8 +52,12 @@ export default function FullAutoPage() {
               clearInterval(pollRef.current!);
               setError(status.error || "Automation failed");
             }
-          } catch {
-            // polling blip
+          } catch (pollErr: any) {
+            if (pollErr?.response?.status === 404) {
+              clearInterval(pollRef.current!);
+              setError("Server restarted mid-job. Please try again.");
+            }
+            // transient network blip — keep polling
           }
         }, 3000);
       } catch (err: any) {
