@@ -17,6 +17,14 @@ api.interceptors.request.use((config) => {
       path = `/asset-packs/generate?script_id=${config.data.script_id}`;
       config.data = undefined;
     }
+    if (path === "/ideas/generate" && config.data.niche_id) {
+      path = `/ideas/generate?niche_id=${config.data.niche_id}`;
+      config.data = undefined;
+    }
+    if (path === "/scripts/generate" && config.data.idea_id) {
+      path = `/scripts/generate?idea_id=${config.data.idea_id}`;
+      config.data = undefined;
+    }
   }
 
   config.url = `?path=${encodeURIComponent(path)}`;
