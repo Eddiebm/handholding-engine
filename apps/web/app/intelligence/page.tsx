@@ -3,7 +3,7 @@ export const runtime = "edge";
 
 import { useState, useEffect, useCallback } from "react";
 
-const API = process.env.NEXT_PUBLIC_API_URL + "/handholding";
+const API = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 type TrendingVideo = {
   id: number;

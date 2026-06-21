@@ -3,7 +3,7 @@ export const runtime = "edge";
 
 import { useEffect, useState, useCallback } from "react";
 
-const API = (process.env.NEXT_PUBLIC_API_URL ?? "") + "/handholding";
+const API = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
