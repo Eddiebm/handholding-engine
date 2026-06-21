@@ -9,7 +9,7 @@ export default function WatchPage() {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API}/demo/full-automation/latest`)
+    fetch(`/api/latest`)
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(d => { setJob(d); setLoading(false); })
       .catch(e => { setErr(String(e)); setLoading(false); });
