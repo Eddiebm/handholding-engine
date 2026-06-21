@@ -151,35 +151,53 @@ function HeroRunning({ currentStep, stepProgress }: { currentStep: number; stepP
 function HeroDone({ result, onReset }: { result: any; onReset: () => void }) {
   const files = result?.automation_files ?? {};
   const videoUrl = files.final_video ? `${API}${files.final_video}` : null;
+  const thumbUrl = files.thumbnail  ? `${API}${files.thumbnail}`   : null;
+
   return (
-    <div style={{ animation: 'fullAutoRise 0.5s ease' }}>
-      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: GREEN, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 22 }}>
-        All 9 steps complete
-      </div>
-      <div style={{ ...HERO_FONT, color: RUST, marginBottom: 12 }}>Done.</div>
-      {result?.niche && (
-        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#C0BAB0', letterSpacing: '0.02em', marginBottom: 28 }}>
-          {result.niche} · {result.idea} · ${result.cost?.total?.toFixed(2) ?? '0.07'}
+    <div style={{ animation: 'fullAutoRise 0.5s ease', display: 'flex', gap: 48, alignItems: 'flex-start', maxWidth: 900 }}>
+      {/* Video player */}
+      {videoUrl && (
+        <div style={{ flexShrink: 0, width: 'clamp(220px, 38vw, 420px)' }}>
+          <video
+            controls
+            autoPlay
+            src={videoUrl}
+            poster={thumbUrl ?? undefined}
+            style={{ width: '100%', display: 'block', background: '#12100A' }}
+          />
         </div>
       )}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-        {videoUrl && (
-          <a href={videoUrl} download style={{
-            background: '#12100A', color: '#F9F8F5', border: 'none', padding: '11px 28px',
-            fontFamily: "'Epilogue', sans-serif", fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            letterSpacing: '0.06em', textTransform: 'uppercase', textDecoration: 'none', display: 'inline-block',
-          }}>Download</a>
+
+      {/* Info + actions */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: GREEN, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 16 }}>
+          All 9 steps complete
+        </div>
+        <div style={{ ...HERO_FONT, color: RUST, marginBottom: 12 }}>Done.</div>
+        {result?.niche && (
+          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#C0BAB0', letterSpacing: '0.02em', marginBottom: 8 }}>
+            {result.niche}
+          </div>
         )}
-        <a href="/watch" style={{
-          background: 'transparent', color: '#C0BAB0', border: '1px solid #DDD8CE', padding: '11px 28px',
-          fontFamily: "'Epilogue', sans-serif", fontSize: 12, cursor: 'pointer',
-          letterSpacing: '0.06em', textTransform: 'uppercase', textDecoration: 'none', display: 'inline-block',
-        }}>Watch</a>
-        <button onClick={onReset} style={{
-          background: 'transparent', color: '#C0BAB0', border: '1px solid #DDD8CE', padding: '11px 28px',
-          fontFamily: "'Epilogue', sans-serif", fontSize: 12, cursor: 'pointer',
-          letterSpacing: '0.06em', textTransform: 'uppercase',
-        }}>Generate Another</button>
+        {result?.idea && (
+          <div style={{ fontSize: 14, color: '#6B6760', lineHeight: 1.5, marginBottom: 28, maxWidth: 320 }}>
+            {result.idea}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {videoUrl && (
+            <a href={videoUrl} download style={{
+              background: '#12100A', color: '#F9F8F5', border: 'none', padding: '11px 24px',
+              fontFamily: "'Epilogue', sans-serif", fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              letterSpacing: '0.06em', textTransform: 'uppercase', textDecoration: 'none', display: 'inline-block',
+            }}>Download</a>
+          )}
+          <button onClick={onReset} style={{
+            background: 'transparent', color: '#C0BAB0', border: '1px solid #DDD8CE', padding: '11px 24px',
+            fontFamily: "'Epilogue', sans-serif", fontSize: 12, cursor: 'pointer',
+            letterSpacing: '0.06em', textTransform: 'uppercase',
+          }}>Generate Another</button>
+        </div>
       </div>
     </div>
   );
