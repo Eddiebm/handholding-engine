@@ -794,10 +794,9 @@ async def generate_shorts_clip(video_path: str, output_path: str) -> str:
         "ffmpeg", "-y",
         "-i", video_path,
         "-t", "58",
-        "-vf", "crop=ih*9/16:ih,scale=1080:1920",
         "-vf", (
             "crop=ih*9/16:ih,scale=1080:1920,"
-            "drawtext=text='WATCH FULL VIDEO 👆':fontsize=48:fontcolor=white:"
+            "drawtext=text='WATCH FULL VIDEO':fontsize=48:fontcolor=white:"
             "x=(w-text_w)/2:y=h-100:box=1:boxcolor=black@0.5:boxborderw=10"
         ),
         "-c:v", "libx264",
