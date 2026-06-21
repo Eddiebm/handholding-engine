@@ -68,12 +68,23 @@ type Dashboard = {
   pending_actions: { action: string; count: number }[];
 };
 
-const LABEL_COLOR: Record<string, string> = {
-  winner: "text-green-400",
-  packaging_problem: "text-yellow-400",
-  retention_problem: "text-orange-400",
-  loser: "text-red-400",
-  needs_more_data: "text-zinc-400",
+type PortfolioNiche = {
+  niche_id: number;
+  niche_name: string;
+  status: string;
+  videos_per_day: number;
+  winner_rate_pct: number;
+  profit_margin_pct: number;
+  total_revenue: number;
+  total_cost: number;
+  priority_score: number;
+};
+
+type CostSummary = {
+  total_api_cost: number;
+  total_revenue: number;
+  net_profit: number;
+  margin_pct: number;
 };
 
 const LABEL_BADGE: Record<string, string> = {
@@ -96,6 +107,16 @@ const DECISION_ICON: Record<string, string> = {
   wait: "⏳",
 };
 
+function trafficLight(score: number): { dot: string; label: string } {
+  if (score > 60) return { dot: "bg-green-400", label: "Scale" };
+  if (score >= 10) return { dot: "bg-yellow-400", label: "Watch" };
+  return { dot: "bg-red-400", label: "Pause" };
+}
+
+function fmtMoney(n: number): string {
+  return "$" + n.toFixed(2);
+}
+
 export default function AutopilotPage() {
   const [status, setStatus] = useState<AutopilotStatus | null>(null);
   const [config, setConfig] = useState<{ mode: string; uploads_per_day: number; safety_gate_enabled: boolean } | null>(null);
@@ -103,15 +124,18 @@ export default function AutopilotPage() {
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [leaderboard, setLeaderboard] = useState<Leaderboard[]>([]);
+  const [portfolio, setPortfolio] = useState<PortfolioNiche[]>([]);
+  const [costs, setCosts] = useState<CostSummary | null>(null);
   const [ytConnected, setYtConnected] = useState<boolean | null>(null);
   const [ytChannel, setYtChannel] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
-  const [tab, setTab] = useState<"overview" | "queue" | "scores" | "decisions">("overview");
+  const [tab, setTab] = useState<"overview" | "portfolio" | "queue" | "scores" | "decisions">("overview");
+  const [portfolioUpdating, setPortfolioUpdating] = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
     try {
-      const [statusR, configR, queueR, decisionsR, dashR, lbR, ytR] = await Promise.allSettled([
+      const [statusR, configR, queueR, decisionsR, dashR, lbR, ytR, portfolioR, costsR] = await Promise.allSettled([
         fetch(`${API}/autopilot/status`).then(r => r.json()),
         fetch(`${API}/autopilot/config`).then(r => r.json()),
         fetch(`${API}/youtube/queue`).then(r => r.json()),
@@ -119,6 +143,8 @@ export default function AutopilotPage() {
         fetch(`${API}/reporting/dashboard`).then(r => r.json()),
         fetch(`${API}/scoring/leaderboard`).then(r => r.json()),
         fetch(`${API}/youtube/auth/status`).then(r => r.json()),
+        fetch(`${API}/intelligence/portfolio`).then(r => r.json()),
+        fetch(`${API}/intelligence/costs`).then(r => r.json()),
       ]);
       if (statusR.status === "fulfilled") setStatus(statusR.value);
       if (configR.status === "fulfilled") setConfig(configR.value);
@@ -130,6 +156,8 @@ export default function AutopilotPage() {
         setYtConnected(ytR.value.connected);
         setYtChannel(ytR.value.channel_id || null);
       }
+      if (portfolioR.status === "fulfilled") setPortfolio(Array.isArray(portfolioR.value) ? portfolioR.value : []);
+      if (costsR.status === "fulfilled") setCosts(costsR.value ?? null);
     } finally {
       setLoading(false);
     }
@@ -190,6 +218,23 @@ export default function AutopilotPage() {
     else msg("Set YOUTUBE_CLIENT_ID + YOUTUBE_CLIENT_SECRET env vars first");
   };
 
+  const updatePortfolio = async (nicheId: number, patch: Record<string, unknown>) => {
+    setPortfolioUpdating(s => new Set(s).add(nicheId));
+    try {
+      const r = await fetch(`${API}/intelligence/portfolio/${nicheId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }).then(r => r.json());
+      setPortfolio(p => p.map(n => n.niche_id === nicheId ? { ...n, ...r } : n));
+      msg("Portfolio updated");
+    } catch {
+      msg("Update failed");
+    } finally {
+      setPortfolioUpdating(s => { const next = new Set(s); next.delete(nicheId); return next; });
+    }
+  };
+
   if (loading) return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
       <div className="text-zinc-500 text-sm animate-pulse">Loading autopilot...</div>
@@ -242,6 +287,34 @@ export default function AutopilotPage() {
           <div className="mb-6 bg-green-950 border border-green-800 rounded-xl p-3 flex items-center gap-3">
             <div className="w-2 h-2 rounded-full bg-green-400" />
             <div className="text-green-300 text-sm">YouTube connected{ytChannel ? ` — channel ${ytChannel}` : ""}</div>
+          </div>
+        )}
+
+        {/* Financial Summary Bar */}
+        {costs && (
+          <div className="mb-6 bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <div className="text-xs text-zinc-500 mb-1">Total API Cost</div>
+                <div className="text-white font-semibold">{fmtMoney(costs.total_api_cost)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-zinc-500 mb-1">Total Revenue</div>
+                <div className="text-green-400 font-semibold">{fmtMoney(costs.total_revenue)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-zinc-500 mb-1">Net Profit</div>
+                <div className={`font-semibold ${costs.net_profit >= 0 ? "text-green-400" : "text-red-400"}`}>
+                  {fmtMoney(costs.net_profit)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-zinc-500 mb-1">Margin</div>
+                <div className={`font-semibold ${costs.margin_pct >= 0 ? "text-green-400" : "text-red-400"}`}>
+                  {costs.margin_pct.toFixed(1)}%
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -303,7 +376,7 @@ export default function AutopilotPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 mb-4 border-b border-zinc-800">
-          {(["overview", "queue", "scores", "decisions"] as const).map(t => (
+          {(["overview", "portfolio", "queue", "scores", "decisions"] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -329,6 +402,23 @@ export default function AutopilotPage() {
         {/* Overview Tab */}
         {tab === "overview" && dashboard && (
           <div className="space-y-6">
+            {/* Traffic Light Legend */}
+            {portfolio.length > 0 && (
+              <div className="flex items-center gap-4 text-xs text-zinc-400">
+                <span className="font-medium text-zinc-500 uppercase tracking-wide">Portfolio:</span>
+                {[
+                  { dot: "bg-green-400", label: "Scale (score > 60)" },
+                  { dot: "bg-yellow-400", label: "Watch (10–60)" },
+                  { dot: "bg-red-400", label: "Pause (< 10)" },
+                ].map(({ dot, label }) => (
+                  <span key={label} className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${dot}`} />
+                    {label}
+                  </span>
+                ))}
+              </div>
+            )}
+
             {/* Pending Actions */}
             {dashboard.pending_actions.length > 0 && (
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
@@ -396,6 +486,81 @@ export default function AutopilotPage() {
                 <div className="text-zinc-600 text-3xl mb-3">📊</div>
                 <div className="text-zinc-400 text-sm">No analytics data yet</div>
                 <div className="text-zinc-600 text-xs mt-1">Generate and upload videos to see performance data</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Portfolio Tab */}
+        {tab === "portfolio" && (
+          <div>
+            {portfolio.length === 0 ? (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center">
+                <div className="text-zinc-600 text-3xl mb-3">📁</div>
+                <div className="text-zinc-400 text-sm">No portfolio data yet</div>
+                <div className="text-zinc-600 text-xs mt-1">Portfolio data appears after niches are set up and active</div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {portfolio.map(n => {
+                  const tl = trafficLight(n.priority_score);
+                  const busy = portfolioUpdating.has(n.niche_id);
+                  return (
+                    <div key={n.niche_id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="pt-1 shrink-0">
+                          <div className={`w-3 h-3 rounded-full ${tl.dot}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-medium text-white">{n.niche_name}</span>
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${
+                              n.status === "scaling" ? "bg-green-900/40 text-green-300 border border-green-800" :
+                              n.status === "paused" || n.status === "terminated" ? "bg-red-900/40 text-red-300 border border-red-800" :
+                              "bg-zinc-800 text-zinc-400 border border-zinc-700"
+                            }`}>
+                              {n.status}
+                            </span>
+                            <span className="text-xs text-zinc-500 ml-auto">{tl.label}</span>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-1 text-xs text-zinc-400">
+                            <div><span className="text-zinc-600">Videos/day </span>{n.videos_per_day}</div>
+                            <div>
+                              <span className="text-zinc-600">Win rate </span>
+                              <span className={n.winner_rate_pct >= 30 ? "text-green-400" : n.winner_rate_pct >= 10 ? "text-yellow-400" : "text-red-400"}>
+                                {n.winner_rate_pct.toFixed(1)}%
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-zinc-600">Margin </span>
+                              <span className={n.profit_margin_pct >= 0 ? "text-green-400" : "text-red-400"}>
+                                {n.profit_margin_pct.toFixed(1)}%
+                              </span>
+                            </div>
+                            <div><span className="text-zinc-600">Revenue </span>${n.total_revenue.toFixed(2)}</div>
+                            <div><span className="text-zinc-600">Cost </span>${n.total_cost.toFixed(2)}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            disabled={busy}
+                            onClick={() => updatePortfolio(n.niche_id, { videos_per_day: n.videos_per_day + 1, status: "scaling" })}
+                            className="px-3 py-1.5 text-xs bg-green-700 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition"
+                          >
+                            Scale Up
+                          </button>
+                          <button
+                            disabled={busy || n.status === "paused"}
+                            onClick={() => updatePortfolio(n.niche_id, { status: "paused" })}
+                            className="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition"
+                          >
+                            Pause
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
