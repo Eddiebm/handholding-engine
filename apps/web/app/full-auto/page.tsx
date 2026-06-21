@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 const API = "https://api.theworldagency.uk/handholding";
+const PROXY = "/api/backend";
 
 type Phase = 'idle' | 'running' | 'done' | 'error';
 
@@ -236,7 +237,7 @@ export default function FullAutoPage() {
 
     let jobId: string;
     try {
-      const r = await fetch(`${API}/demo/full-automation/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const r = await fetch(`${PROXY}/demo/full-automation/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       if (!r.ok) { setPhase('error'); setErrorMsg(`Server error ${r.status}`); return; }
       const d = await r.json();
       if (!d.job_id) { setPhase('error'); setErrorMsg('No job_id returned'); return; }
@@ -247,7 +248,7 @@ export default function FullAutoPage() {
 
     pollRef.current = setInterval(async () => {
       try {
-        const r = await fetch(`${API}/demo/full-automation/status/${jobId}`);
+        const r = await fetch(`${PROXY}/demo/full-automation/status/${jobId}`);
         if (r.status === 404) {
           stopPolling(); setPhase('error'); setErrorMsg('Job lost — server restarted. Try again.'); return;
         }
