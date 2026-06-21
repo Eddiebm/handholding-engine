@@ -250,7 +250,14 @@ export default function FullAutoPage() {
       try {
         const r = await fetch(`${PROXY}/demo/full-automation/status/${jobId}`);
         if (r.status === 404) {
-          stopPolling(); setPhase('error'); setErrorMsg('Job lost — server restarted. Try again.'); return;
+          // Server restarted mid-job — check if video finished on disk before giving up
+          const latest = await fetch('/api/latest').then(x => x.json()).catch(() => null);
+          if (latest?.result?.automation_files?.final_video) {
+            stopPolling(); setStepProgress(100); setResult(latest.result); setPhase('done');
+          } else {
+            stopPolling(); setPhase('error'); setErrorMsg('Server restarted mid-job. Try again.');
+          }
+          return;
         }
         const s = await r.json();
         const idx = stepIndexFromBackend(s.step ?? '');
