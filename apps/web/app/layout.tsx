@@ -23,6 +23,7 @@ export default function RootLayout({
               <a href="/intelligence" className="hover:text-blue-100">🧠 Intelligence</a>
               <a href="/capital" className="hover:text-blue-100">💰 Capital</a>
               <a href="/full-auto" className="hover:text-blue-100">⚡ Full Auto</a>
+              <a href="/watch" className="hover:text-blue-100">🎬 Watch</a>
               <a href="/calendar" className="hover:text-blue-100">📅 Calendar</a>
               <a href="/batch" className="hover:text-blue-100">🚀 Batch</a>
               <a href="/admin" className="hover:text-blue-100">📊 Admin</a>
