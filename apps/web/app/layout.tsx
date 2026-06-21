@@ -19,6 +19,7 @@ export default function RootLayout({
             <a href="/" className="text-2xl font-bold hover:text-blue-100">Handholding</a>
             <div className="space-x-4 text-sm">
               <a href="/" className="hover:text-blue-100">Dashboard</a>
+              <a href="/autopilot" className="hover:text-blue-100">🤖 Autopilot</a>
               <a href="/full-auto" className="hover:text-blue-100">⚡ Full Auto</a>
               <a href="/calendar" className="hover:text-blue-100">📅 Calendar</a>
               <a href="/batch" className="hover:text-blue-100">🚀 Batch</a>
