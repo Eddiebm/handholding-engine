@@ -151,8 +151,8 @@ function HeroRunning({ currentStep, stepProgress }: { currentStep: number; stepP
 
 function HeroDone({ result, onReset }: { result: any; onReset: () => void }) {
   const files = result?.automation_files ?? {};
-  const videoUrl = files.final_video ? `${API}${files.final_video}` : null;
-  const thumbUrl = files.thumbnail  ? `${API}${files.thumbnail}`   : null;
+  const videoUrl = files.final_video ? `${API}/download/video/${files.final_video}` : null;
+  const thumbUrl = files.thumbnail  ? `${API}/download/thumbnail/${files.thumbnail}` : null;
 
   return (
     <div style={{ animation: 'fullAutoRise 0.5s ease', display: 'flex', gap: 48, alignItems: 'flex-start', maxWidth: 900 }}>

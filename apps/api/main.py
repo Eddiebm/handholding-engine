@@ -1651,10 +1651,10 @@ async def full_automation(db: Session = Depends(get_db)):
             "script_framework": script.framework,
             "asset_pack_id": assets.id,
             "automation_files": {
-                "voiceover": voice_file if voice_file else "Not generated",
+                "voiceover": os.path.basename(voice_file) if voice_file else "Not generated",
                 "broll_videos": len(broll_data),
-                "thumbnail": thumbnail_file if thumbnail_file else "Not generated",
-                "final_video": final_video_file if final_video_file else "Not assembled"
+                "thumbnail": os.path.basename(thumbnail_file) if thumbnail_file else "Not generated",
+                "final_video": os.path.basename(final_video_file) if final_video_file else "Not assembled"
             },
             "cost": {
                 "total": round(session_costs["total"], 4),
