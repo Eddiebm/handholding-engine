@@ -43,20 +43,15 @@ export default function FullAutoPage() {
 
     const poll = () => {
       fetch(`/api/proxy?path=%2Fdemo%2Ffull-automation%2Fstatus%2F${jobId}`)
-        .then((r) => {
-          if (r.status === 404) { setError("Job expired (server restarted) — click Try Again"); return null; }
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          return r.json();
-        })
+        .then((r) => r.json())
         .then((d) => {
-          if (!d) return;
           setStep(d.step || "");
           setLive(d.live || {});
           setStatus(d.status);
           if (d.status === "done") setResult(d.result);
           else if (d.status === "error") setError(d.error || "Unknown error");
         })
-        .catch(() => {}); // ignore transient network errors
+        .catch(() => {}); // ignore transient poll errors
     };
 
     poll();
@@ -126,8 +121,6 @@ export default function FullAutoPage() {
   const shortUrl = mediaUrl(files.short_video);
   const audioUrl = mediaUrl(files.voiceover);
   const thumbUrl = mediaUrl(files.thumbnail);
-  const youtubeUrl = result?.youtube_url;
-  const youtubeShortsUrl = result?.shorts_url;
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -159,30 +152,6 @@ export default function FullAutoPage() {
           </div>
         </div>
       </div>
-
-      {/* YouTube links */}
-      {(youtubeUrl || youtubeShortsUrl) && (
-        <div className="card bg-red-50 border-2 border-red-400 text-center space-y-2">
-          {youtubeUrl && (
-            <>
-              <p className="text-lg font-bold text-red-700">Uploaded to YouTube</p>
-              <a href={youtubeUrl} target="_blank" rel="noopener noreferrer"
-                 className="text-red-600 underline font-mono text-sm break-all block">
-                {youtubeUrl}
-              </a>
-            </>
-          )}
-          {youtubeShortsUrl && (
-            <>
-              <p className="text-sm font-semibold text-red-600 pt-1">Short also posted</p>
-              <a href={youtubeShortsUrl} target="_blank" rel="noopener noreferrer"
-                 className="text-red-500 underline font-mono text-xs break-all block">
-                {youtubeShortsUrl}
-              </a>
-            </>
-          )}
-        </div>
-      )}
 
       {/* Final video */}
       {videoUrl ? (
