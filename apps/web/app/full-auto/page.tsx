@@ -43,15 +43,20 @@ export default function FullAutoPage() {
 
     const poll = () => {
       fetch(`/api/proxy?path=%2Fdemo%2Ffull-automation%2Fstatus%2F${jobId}`)
-        .then((r) => r.json())
+        .then((r) => {
+          if (r.status === 404) { setError("Job expired (server restarted) — click Try Again"); return null; }
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.json();
+        })
         .then((d) => {
+          if (!d) return;
           setStep(d.step || "");
           setLive(d.live || {});
           setStatus(d.status);
           if (d.status === "done") setResult(d.result);
           else if (d.status === "error") setError(d.error || "Unknown error");
         })
-        .catch(() => {}); // ignore transient poll errors
+        .catch(() => {}); // ignore transient network errors
     };
 
     poll();
