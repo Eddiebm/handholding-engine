@@ -107,6 +107,15 @@ export default function Dashboard() {
           </button>
         </div>
 
+        <div className="flex justify-center">
+          <button
+            onClick={() => router.push("/analytics")}
+            className="text-sm text-purple-600 hover:text-purple-800 underline"
+          >
+            📊 View Channel Analytics & YPP Progress
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-gray-600">
           <p>
             <strong>Basic:</strong> Niche, ideas, script, assets. You record voiceover & handle editing.
