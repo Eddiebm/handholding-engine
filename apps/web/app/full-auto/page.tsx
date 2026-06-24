@@ -126,6 +126,7 @@ export default function FullAutoPage() {
   const shortUrl = mediaUrl(files.short_video);
   const audioUrl = mediaUrl(files.voiceover);
   const thumbUrl = mediaUrl(files.thumbnail);
+  const youtubeUrl = result?.youtube_url;
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -157,6 +158,17 @@ export default function FullAutoPage() {
           </div>
         </div>
       </div>
+
+      {/* YouTube link */}
+      {youtubeUrl && (
+        <div className="card bg-red-50 border-2 border-red-400 text-center">
+          <p className="text-lg font-bold text-red-700 mb-2">Uploaded to YouTube</p>
+          <a href={youtubeUrl} target="_blank" rel="noopener noreferrer"
+             className="text-red-600 underline font-mono text-sm break-all">
+            {youtubeUrl}
+          </a>
+        </div>
+      )}
 
       {/* Final video */}
       {videoUrl ? (
