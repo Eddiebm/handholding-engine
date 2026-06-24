@@ -58,3 +58,7 @@ export async function GET(request: Request) {
 export async function DELETE(request: Request) {
   return proxyRequest(request, "DELETE");
 }
+
+export async function PATCH(request: Request) {
+  return proxyRequest(request, "PATCH");
+}

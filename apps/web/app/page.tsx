@@ -199,6 +199,13 @@ export default function Dashboard() {
             <p className="text-sm text-gray-600 mt-2">Thumbnail, titles, B-roll, voiceover brief</p>
           </div>
         </Link>
+
+        <Link href="/channels">
+          <div className="card cursor-pointer hover:shadow-lg transition-shadow border-l-4 border-purple-400">
+            <h4 className="font-semibold text-purple-600">📺 Channels</h4>
+            <p className="text-sm text-gray-600 mt-2">Manage YouTube channels, tokens, and routing</p>
+          </div>
+        </Link>
       </div>
     </div>
   );
