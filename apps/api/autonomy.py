@@ -703,7 +703,14 @@ async def _run_daily_generation():
                     "WHERE vm.id=:mid LIMIT 1",
                     {"mid": mem_id}
                 ).fetchone()
-                description = desc_row[0] if desc_row else f"Watch this video about {title}"
+                niche_row = db.execute(
+                    "SELECT n.name FROM niches n JOIN video_memory vm ON vm.niche_id=n.id WHERE vm.id=:mid LIMIT 1",
+                    {"mid": mem_id}
+                ).fetchone()
+                niche_name = niche_row[0] if niche_row else ""
+                from capital import get_affiliate_block
+                affiliate_block = get_affiliate_block(niche_name, db)
+                description = (desc_row[0] if desc_row else f"Watch this video about {title}") + affiliate_block
                 yt_id = await upload_video_to_youtube(
                     user_id=1, video_path=vid_path, title=title,
                     description=description, tags=[],
@@ -825,7 +832,14 @@ async def trigger_upload(req: UploadRequest, background_tasks: BackgroundTasks, 
                 "WHERE vi.niche_id=(SELECT niche_id FROM video_memory WHERE id=:mid) LIMIT 1",
                 {"mid": mem_id}
             ).fetchone()
-            description = desc_row[0] if desc_row else f"Watch: {title}"
+            niche_row = _db.execute(
+                "SELECT n.name FROM niches n JOIN video_memory vm ON vm.niche_id=n.id WHERE vm.id=:mid LIMIT 1",
+                {"mid": mem_id}
+            ).fetchone()
+            niche_name = niche_row[0] if niche_row else ""
+            from capital import get_affiliate_block
+            affiliate_block = get_affiliate_block(niche_name, _db)
+            description = (desc_row[0] if desc_row else f"Watch: {title}") + affiliate_block
 
             yt_id = await upload_video_to_youtube(
                 user_id=1, video_path=vid_path, title=title,
