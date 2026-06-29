@@ -1116,8 +1116,6 @@ async def _run_automation(job_id: str):
                         token_uri="https://oauth2.googleapis.com/token",
                         client_id=ch["client_id"],
                         client_secret=ch["client_secret"],
-                        scopes=["https://www.googleapis.com/auth/youtube.upload",
-                                "https://www.googleapis.com/auth/youtube"],
                     )
                     creds.refresh(GReq())
                     yt = build("youtube", "v3", credentials=creds)
