@@ -21,3 +21,4 @@ build/
 *.log
 .mypy_cache/
 postgres_data/
+data/channels.json

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Request
 from fastapi.responses import RedirectResponse, JSONResponse
+from sqlalchemy import text
 from sqlalchemy import (
     Column, Integer, String, Text, Float, Boolean, DateTime, JSON as SAJSON,
     create_engine, ForeignKey
@@ -113,7 +114,7 @@ class ContentDecision(Base):
     niche_id        = Column(Integer, nullable=True)
     decision_type   = Column(String, nullable=False)
     reason          = Column(Text, nullable=True)
-    metadata        = Column(SAJSON, nullable=True)
+    extra_metadata  = Column(SAJSON, nullable=True)
     applied         = Column(Boolean, default=False)
     applied_at      = Column(DateTime, nullable=True)
     created_at      = Column(DateTime, default=datetime.utcnow)
@@ -175,8 +176,8 @@ def _load_creds(db: Session, user_id: int):
     from google.oauth2.credentials import Credentials
     # Use platform_credentials table (already in main schema)
     row = db.execute(
-        "SELECT access_token, refresh_token, expires_at, channel_id "
-        "FROM platform_credentials WHERE user_id=:uid AND platform='youtube' LIMIT 1",
+        text("SELECT access_token, refresh_token, expires_at, channel_id "
+        "FROM platform_credentials WHERE user_id=:uid AND platform='youtube' LIMIT 1"),
         {"uid": user_id}
     ).fetchone()
     if not row:
@@ -196,21 +197,21 @@ def _save_creds(db: Session, user_id: int, creds, channel_id: str = None):
     """Upsert YouTube credentials into platform_credentials."""
     expires = creds.expiry if creds.expiry else datetime.utcnow() + timedelta(hours=1)
     existing = db.execute(
-        "SELECT id FROM platform_credentials WHERE user_id=:uid AND platform='youtube'",
+        text("SELECT id FROM platform_credentials WHERE user_id=:uid AND platform='youtube'"),
         {"uid": user_id}
     ).fetchone()
     if existing:
         db.execute(
-            "UPDATE platform_credentials SET access_token=:at, refresh_token=:rt, "
+            text("UPDATE platform_credentials SET access_token=:at, refresh_token=:rt, "
             "expires_at=:ex, channel_id=COALESCE(:cid, channel_id), updated_at=NOW() "
-            "WHERE user_id=:uid AND platform='youtube'",
+            "WHERE user_id=:uid AND platform='youtube'"),
             {"at": creds.token, "rt": creds.refresh_token, "ex": expires,
              "cid": channel_id, "uid": user_id}
         )
     else:
         db.execute(
-            "INSERT INTO platform_credentials (user_id, platform, access_token, refresh_token, expires_at, channel_id, created_at, updated_at) "
-            "VALUES (:uid, 'youtube', :at, :rt, :ex, :cid, NOW(), NOW())",
+            text("INSERT INTO platform_credentials (user_id, platform, access_token, refresh_token, expires_at, channel_id, created_at, updated_at) "
+            "VALUES (:uid, 'youtube', :at, :rt, :ex, :cid, NOW(), NOW())"),
             {"uid": user_id, "at": creds.token, "rt": creds.refresh_token,
              "ex": expires, "cid": channel_id}
         )
@@ -582,6 +583,28 @@ def get_feedback_context(niche_id: int, db: Session) -> str:
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 
+import httpx as _httpx
+import os as _os
+
+def _fire_alert(subject, body):
+    try:
+        key = _os.environ.get("RESEND_KEY", "")
+        if not key:
+            return
+        _httpx.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={
+                "from": "Handholding Engine <hello@ideabylunch.com>",
+                "to": ["eddie@bannermanmenson.com"],
+                "subject": subject,
+                "html": f"<pre>{body}</pre>",
+            },
+            timeout=10,
+        )
+    except Exception:
+        pass
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 scheduler = AsyncIOScheduler(timezone="UTC")
 
@@ -671,6 +694,18 @@ async def _run_analytics_collection():
 
 async def _run_daily_generation():
     """Full autopilot: generate + safety check + upload batch."""
+    try:
+        await _run_daily_generation_inner()
+    except Exception as _exc:
+        import traceback
+        _fire_alert(
+            "ALERT: Handholding Engine daily run FAILED",
+            f"Error: {_exc}\n\n{traceback.format_exc()}"
+        )
+        raise
+
+async def _run_daily_generation_inner():
+    """Full autopilot: generate + safety check + upload batch."""
     db = _SessionLocal()
     try:
         config = db.execute(
@@ -727,6 +762,27 @@ async def _run_daily_generation():
         db.close()
 
 
+async def _watchdog_check():
+    """Alert if no video was uploaded in the last 24 hours."""
+    db = _SessionLocal()
+    try:
+        row = db.execute(
+            "SELECT youtube_video_id, uploaded_at FROM video_memory "
+            "WHERE youtube_video_id IS NOT NULL ORDER BY uploaded_at DESC LIMIT 1"
+        ).fetchone()
+        from datetime import datetime, timedelta
+        if not row or (datetime.utcnow() - row[1]) > timedelta(hours=25):
+            last = row[1].strftime("%Y-%m-%d %H:%M UTC") if row else "never"
+            _fire_alert(
+                "WARNING: No YouTube upload in 24h",
+                f"Last upload: {last}\nCheck the server logs at /var/log/handholding.log"
+            )
+    except Exception as e:
+        _fire_alert("ERROR: Watchdog check failed", str(e))
+    finally:
+        db.close()
+
+
 def register_scheduler(app):
     """Hook APScheduler into FastAPI startup/shutdown."""
     @app.on_event("startup")
@@ -734,8 +790,9 @@ def register_scheduler(app):
         if not scheduler.running:
             scheduler.add_job(_run_analytics_collection, "cron", hour=6, minute=0, id="analytics_daily")
             scheduler.add_job(_run_daily_generation, "cron", hour=7, minute=0, id="generation_daily")
+            scheduler.add_job(_watchdog_check, "cron", hour=9, minute=0, id="watchdog_daily")
             scheduler.start()
-            print("[SCHEDULER] Started — analytics@06:00 UTC, generation@07:00 UTC", flush=True)
+            print("[SCHEDULER] Started — analytics@06:00 UTC, generation@07:00 UTC, watchdog@09:00 UTC", flush=True)
 
     @app.on_event("shutdown")
     async def _stop():
