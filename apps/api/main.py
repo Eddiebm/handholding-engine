@@ -253,8 +253,63 @@ async def clone_voice_on_elevenlabs(clip_paths: list) -> str:
     return ""
 
 # Automation helpers
-async def generate_voice(script_text: str) -> str:
-    """Generate voiceover using OpenAI TTS (onyx voice). Splits long scripts into chunks."""
+async def generate_voice(script_text: str, voice_path: str = "") -> str:
+    """Generate voiceover. Uses ElevenLabs if key valid, else OpenAI TTS."""
+    # Try ElevenLabs first (better quality)
+    if ELEVENLABS_API_KEY:
+        try:
+            import requests as _elreq
+            _el_voice = "21m00Tcm4TlvDq8ikWAM"  # Rachel (default)
+            # Check channels.json for channel-specific voice_id
+            try:
+                import json as _cej
+                _chs = _cej.loads(open("/opt/handholding-engine/data/channels.json").read())
+                _ach = next((c for c in _chs if c.get("active")), None)
+                if _ach and _ach.get("elevenlabs_voice_id"):
+                    _el_voice = _ach["elevenlabs_voice_id"]
+            except Exception:
+                pass
+            def _el_chunks(text, max_len=4000):
+                chunks = []
+                while len(text) > max_len:
+                    cut = text.rfind(". ", 0, max_len)
+                    cut = (cut + 2) if cut != -1 else max_len
+                    chunks.append(text[:cut].strip())
+                    text = text[cut:].strip()
+                if text: chunks.append(text)
+                return chunks
+            _chunks = _el_chunks(script_text)
+            _chunk_files = []
+            for _i, _chunk in enumerate(_chunks):
+                _resp = _elreq.post(
+                    f"https://api.elevenlabs.io/v1/text-to-speech/{_el_voice}",
+                    headers={"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"},
+                    json={"text": _chunk, "model_id": "eleven_turbo_v2", "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}},
+                    timeout=60
+                )
+                if _resp.status_code == 200:
+                    _cf = f"/tmp/el_chunk_{int(os.times()[4])}_{_i}.mp3"
+                    open(_cf, "wb").write(_resp.content)
+                    _chunk_files.append(_cf)
+                else:
+                    raise Exception(f"ElevenLabs {_resp.status_code}: {_resp.text[:200]}")
+            if not _chunk_files:
+                raise Exception("No ElevenLabs chunks generated")
+            if len(_chunk_files) == 1:
+                return _chunk_files[0]
+            _concat = f"/tmp/el_concat_{int(os.times()[4])}.txt"
+            open(_concat, "w").write("\n".join(f"file '{f}'" for f in _chunk_files))
+            _out = f"/tmp/voiceover_{int(os.times()[4])}.mp3"
+            import subprocess as _sp
+            _sp.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", _concat, "-c", "copy", _out], capture_output=True)
+            for _cf in _chunk_files:
+                try: os.remove(_cf)
+                except: pass
+            if os.path.exists(_out):
+                return _out
+        except Exception as _el_err:
+            sys.stderr.write(f"ElevenLabs TTS failed ({_el_err}), falling back to OpenAI\n")
+
     if not OPENAI_API_KEY:
         return ""
 
@@ -1118,7 +1173,17 @@ async def _run_automation(job_id: str):
         if not ELEVENLABS_API_KEY or not PEXELS_API_KEY:
             raise Exception("Missing ELEVENLABS_API_KEY or PEXELS_API_KEY")
 
-        niche_text = await call_openai("Pick ONE trending YouTube niche with high monetization potential. Return ONLY JSON: {\"name\": \"...\", \"audience\": \"...\", \"monetization_angle\": \"...\", \"notes\": \"...\"}")
+        # Read active channel to constrain niche
+        import json as _cj
+        _ch_data = _cj.loads(open("/opt/handholding-engine/data/channels.json").read())
+        _active_ch = next((c for c in _ch_data if c.get("active")), None)
+        _ch_name = _active_ch["display_name"] if _active_ch else "Personal Finance"
+        _ch_keywords = ", ".join(_active_ch.get("niche_keywords", [])[:6]) if _active_ch else "money, investing, budgeting"
+        niche_text = await call_openai(
+            f"You are creating content for a YouTube channel called \"{_ch_name}\". "
+            f"Pick ONE specific niche topic within this channel's focus ({_ch_keywords}). "
+            "Return ONLY JSON: {\"name\": \"...\", \"audience\": \"...\", \"monetization_angle\": \"...\", \"notes\": \"...\"}",
+        )
         niche_data = _parse_json(niche_text)
 
         demo_user = db.query(User).filter(User.id == 1).first()
@@ -1209,7 +1274,26 @@ async def _run_automation(job_id: str):
             voice_file = await merge_human_clips(voice_file)
 
         step("Fetching B-roll...")
-        broll_data = await fetch_broll(best_idea.title, count=3)
+        # Generate specific visual search terms so footage actually matches the content
+        _broll_terms_text = await call_openai(
+            f"For a YouTube video titled: \"{_idea_title if '_idea_title' in dir() else best_idea.title}\"\n"
+            "List 4 specific Pexels video search queries that show realistic, relevant footage.\n"
+            "Focus on concrete visuals: people doing things, specific objects, real scenes.\n"
+            "NO abstract concepts. Return JSON array of 4 strings only.",
+            response_format="json"
+        )
+        try:
+            _broll_queries = _parse_json(_broll_terms_text)
+            if not isinstance(_broll_queries, list):
+                _broll_queries = [best_idea.title]
+        except Exception:
+            _broll_queries = [best_idea.title]
+        broll_data = []
+        for _q in _broll_queries[:4]:
+            _clips = await fetch_broll(_q, count=2)
+            broll_data.extend(_clips)
+        if not broll_data:
+            broll_data = await fetch_broll(best_idea.title, count=5)
 
         step("Generating thumbnail...")
         thumbnail_file = await generate_thumbnail(assets_data["thumbnail_prompt"])
