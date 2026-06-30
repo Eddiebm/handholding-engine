@@ -1071,7 +1071,18 @@ async def _run_automation(job_id: str):
                 best_idea = idea
 
         step("Writing script...")
-        script_text = await call_openai(f"Write a viral 10-min YouTube script for: '{best_idea.title}' ({niche.audience}). Return JSON: {{\"hook\": \"...\", \"full_script\": \"...\", \"fact_check_flags\": [], \"unsupported_claims\": [], \"cta\": \"...\" }}", response_format="json")
+        script_prompt = (
+            "Write a complete 10-minute YouTube script.\n"
+            f"Title: {best_idea.title}\n"
+            f"Audience: {niche.audience}\n"
+            "REQUIREMENTS:\n"
+            "- full_script MUST be at least 1500 words (10 min at 150 wpm)\n"
+            "- 6-8 distinct sections with clear transitions\n"
+            "- Pattern interrupt every 90 seconds\n"
+            "- Conversational, high-energy tone throughout\n"
+            "- Strong hook in first 30 seconds, strong CTA at end\n"
+            'Return JSON only: {"hook": "...", "full_script": "<1500+ word script>", "fact_check_flags": [], "unsupported_claims": [], "cta": "..."}'
+        )
         script_data = json.loads(script_text)
         script = Script(idea_id=best_idea.id, hook=script_data["hook"], full_script=script_data["full_script"], fact_check_flags=json.dumps(script_data.get("fact_check_flags", [])), unsupported_claims=json.dumps(script_data.get("unsupported_claims", [])), cta=script_data["cta"])
         db.add(script)
@@ -1277,7 +1288,6 @@ async def full_automation(db: Session = Depends(get_db)):
 
         # Script
         script_prompt = f"Write a viral 10-min YouTube script for: '{best_idea.title}' ({niche.audience}). Return JSON: {{\"hook\": \"...\", \"full_script\": \"...\", \"fact_check_flags\": [], \"unsupported_claims\": [], \"cta\": \"...\" }}"
-        script_text = await call_openai(script_prompt, response_format="json")
         script_data = json.loads(script_text)
 
         script = Script(
