@@ -254,24 +254,70 @@ async def clone_voice_on_elevenlabs(clip_paths: list) -> str:
 
 # Automation helpers
 async def generate_voice(script_text: str) -> str:
-    """Generate voiceover using OpenAI TTS (onyx voice)."""
+    """Generate voiceover using OpenAI TTS (onyx voice). Splits long scripts into chunks."""
     if not OPENAI_API_KEY:
         return ""
 
     try:
-        import requests
-        text = script_text[:4000]  # OpenAI TTS limit: 4096 chars
-        response = requests.post(
-            "https://api.openai.com/v1/audio/speech",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-            json={"model": "tts-1", "voice": "onyx", "input": text},
+        import requests as _req, tempfile as _tmp
+
+        # Split script into 4000-char chunks at sentence boundaries
+        def _split_chunks(text, max_len=4000):
+            chunks = []
+            while len(text) > max_len:
+                # Find last sentence end before max_len
+                cut = text.rfind('. ', 0, max_len)
+                if cut == -1:
+                    cut = max_len
+                else:
+                    cut += 2  # include the period and space
+                chunks.append(text[:cut].strip())
+                text = text[cut:].strip()
+            if text:
+                chunks.append(text)
+            return chunks
+
+        chunks = _split_chunks(script_text)
+        chunk_files = []
+
+        for i, chunk in enumerate(chunks):
+            resp = _req.post(
+                "https://api.openai.com/v1/audio/speech",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                json={"model": "tts-1", "voice": "onyx", "input": chunk},
+                timeout=60,
+            )
+            if resp.status_code == 200:
+                chunk_file = f"/tmp/tts_chunk_{int(os.times()[4])}_{i}.mp3"
+                with open(chunk_file, "wb") as f:
+                    f.write(resp.content)
+                chunk_files.append(chunk_file)
+            else:
+                sys.stderr.write(f"TTS chunk {i} error {resp.status_code}: {resp.text[:200]}\n")
+
+        if not chunk_files:
+            return ""
+
+        if len(chunk_files) == 1:
+            return chunk_files[0]
+
+        # Concatenate MP3 chunks using ffmpeg
+        concat_list = f"/tmp/tts_concat_{int(os.times()[4])}.txt"
+        with open(concat_list, "w") as f:
+            for cf in chunk_files:
+                f.write(f"file '{cf}'\n")
+        output = f"/tmp/voiceover_{int(os.times()[4])}.mp3"
+        import subprocess as _sp
+        _sp.run(
+            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list, "-c", "copy", output],
+            capture_output=True
         )
-        if response.status_code == 200:
-            filename = f"/tmp/voiceover_{int(os.times()[4])}.mp3"
-            with open(filename, "wb") as f:
-                f.write(response.content)
-            return filename
-        sys.stderr.write(f"OpenAI TTS error {response.status_code}: {response.text}\n")
+        # Cleanup chunk files
+        for cf in chunk_files:
+            try: os.remove(cf)
+            except: pass
+        return output if os.path.exists(output) else chunk_files[0]
+
     except Exception as e:
         sys.stderr.write(f"Voice generation error: {str(e)}\n")
 
@@ -419,7 +465,7 @@ async def generate_thumbnail(prompt: str) -> str:
             "size": "1024x1024"
         }
 
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=120) as client:
             response = await client.post(
                 f"{OPENAI_API_BASE}/images/generations",
                 json=payload,
@@ -457,14 +503,14 @@ async def call_openai(prompt: str, system: str = "", response_format: str = "tex
         "model": "gpt-4-turbo",
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 2000,
+        "max_tokens": 4000,
     }
 
     if response_format == "json":
         payload["response_format"] = {"type": "json_object"}
 
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=120) as client:
             url = f"{OPENAI_API_BASE}/chat/completions"
             response = await client.post(
                 url,
@@ -1025,6 +1071,32 @@ async def merge_human_clips(voiceover_file: str) -> str:
 
 _jobs: dict = {}
 
+
+def _parse_json(text: str):
+    """Extract and parse JSON from GPT response, handling trailing text."""
+    import re as _re
+    text = text.strip()
+    # Try direct parse first
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # Try extracting array
+    m = _re.search(r'\[.*\]', text, _re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except Exception:
+            pass
+    # Try extracting object
+    m = _re.search(r'\{.*\}', text, _re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except Exception:
+            pass
+    raise ValueError(f"Could not parse JSON from: {text[:200]}")
+
 async def _run_automation(job_id: str):
     db = SessionLocal()
     def step(s: str):
@@ -1036,7 +1108,7 @@ async def _run_automation(job_id: str):
             raise Exception("Missing ELEVENLABS_API_KEY or PEXELS_API_KEY")
 
         niche_text = await call_openai("Pick ONE trending YouTube niche with high monetization potential. Return ONLY JSON: {\"name\": \"...\", \"audience\": \"...\", \"monetization_angle\": \"...\", \"notes\": \"...\"}")
-        niche_data = json.loads(niche_text)
+        niche_data = _parse_json(niche_text)
 
         demo_user = db.query(User).filter(User.id == 1).first()
         if not demo_user:
@@ -1051,14 +1123,14 @@ async def _run_automation(job_id: str):
 
         step("Researching competitors...")
         comp_text = await call_openai(f"For '{niche.name}', list 5 REAL YouTube competitors. Return JSON array: [{{\"title_or_url\": \"name\", \"notes\": \"why it works\"}}]")
-        comp_data = json.loads(comp_text)
+        comp_data = _parse_json(comp_text)
         for comp in comp_data:
             db.add(CompetitorInput(niche_id=niche.id, **comp))
         db.commit()
 
         step("Generating video ideas...")
         ideas_text = await call_openai(f"For '{niche.name}' ({niche.audience}), create 5 viral video ideas. Return JSON: [{{\"title\": \"...\", \"reason\": \"...\", \"demand_score\": 8, \"clickability_score\": 8, \"monetization_score\": 8, \"production_ease_score\": 8, \"trust_risk_score\": 9, \"repeatability_score\": 8}}]")
-        ideas_data = json.loads(ideas_text)
+        ideas_data = _parse_json(ideas_text)
         best_idea = None
         for idea_data in ideas_data:
             idea_data["total_score"] = sum([idea_data["demand_score"], idea_data["clickability_score"], idea_data["monetization_score"], idea_data["production_ease_score"], idea_data["trust_risk_score"], idea_data["repeatability_score"]]) / 6
@@ -1071,19 +1143,42 @@ async def _run_automation(job_id: str):
                 best_idea = idea
 
         step("Writing script...")
-        script_prompt = (
-            "Write a complete 10-minute YouTube script.\n"
-            f"Title: {best_idea.title}\n"
-            f"Audience: {niche.audience}\n"
-            "REQUIREMENTS:\n"
-            "- full_script MUST be at least 1500 words (10 min at 150 wpm)\n"
-            "- 6-8 distinct sections with clear transitions\n"
-            "- Pattern interrupt every 90 seconds\n"
-            "- Conversational, high-energy tone throughout\n"
-            "- Strong hook in first 30 seconds, strong CTA at end\n"
-            'Return JSON only: {"hook": "...", "full_script": "<1500+ word script>", "fact_check_flags": [], "unsupported_claims": [], "cta": "..."}'
+        # Generate script in 3 parts to ensure 10-minute length (GPT won't write 1600 words in one shot)
+        _title = best_idea.title
+        _audience = niche.audience
+        _part1 = await call_openai(
+            f"Write the OPENING of a YouTube script for: {_title!r} (audience: {_audience}).\n"
+            "Include: strong hook, intro, and first 2 main points.\n"
+            "Write 400-500 words of spoken script only. No JSON, no formatting, no labels.\n"
+            "Start immediately with the first spoken words.",
+            response_format="text"
         )
-        script_data = json.loads(script_text)
+        _part2 = await call_openai(
+            f"Continue this YouTube script for: {_title!r}.\n"
+            f"Previous section ended with: ...{_part1[-200:]}\n"
+            "Write the MIDDLE section: next 3 main points with examples and transitions.\n"
+            "Write 500-600 words of spoken script only. Continue seamlessly.",
+            response_format="text"
+        )
+        _part3 = await call_openai(
+            f"Write the CLOSING of this YouTube script for: {_title!r}.\n"
+            f"Previous section ended with: ...{_part2[-200:]}\n"
+            "Include: final tips, summary, and strong call-to-action.\n"
+            "Write 400-500 words of spoken script only. End with a compelling CTA.",
+            response_format="text"
+        )
+        full_script_text = f"{_part1}\n\n{_part2}\n\n{_part3}"
+        # Extract hook and CTA
+        import re as _re
+        hook_sentences = ". ".join(_part1.split(". ")[:3]) + "."
+        cta_sentences = ". ".join(_part3.split(". ")[-3:]).strip()
+        script_data = {
+            "hook": hook_sentences,
+            "full_script": full_script_text,
+            "fact_check_flags": [],
+            "unsupported_claims": [],
+            "cta": cta_sentences,
+        }
         script = Script(idea_id=best_idea.id, hook=script_data["hook"], full_script=script_data["full_script"], fact_check_flags=json.dumps(script_data.get("fact_check_flags", [])), unsupported_claims=json.dumps(script_data.get("unsupported_claims", [])), cta=script_data["cta"])
         db.add(script)
         db.commit()
@@ -1091,7 +1186,7 @@ async def _run_automation(job_id: str):
 
         step("Building asset pack...")
         assets_text = await call_openai(f"Create asset pack for '{best_idea.title}'. Return JSON: {{\"thumbnail_prompt\": \"...\", \"alternate_titles\": [...], \"broll_list\": [...], \"voiceover_instructions\": \"...\", \"editor_brief\": \"...\", \"youtube_description\": \"...\", \"pinned_comment\": \"...\"}}", response_format="json")
-        assets_data = json.loads(assets_text)
+        assets_data = _parse_json(assets_text)
         assets = AssetPack(script_id=script.id, thumbnail_prompt=assets_data["thumbnail_prompt"], alternate_titles=json.dumps(assets_data["alternate_titles"]), broll_list=json.dumps(assets_data["broll_list"]), voiceover_instructions=assets_data["voiceover_instructions"], editor_brief=assets_data["editor_brief"], youtube_description=assets_data["youtube_description"], pinned_comment=assets_data["pinned_comment"])
         db.add(assets)
         db.commit()
