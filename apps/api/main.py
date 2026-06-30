@@ -407,23 +407,23 @@ async def assemble_video(voiceover_file: str, broll_videos: list, thumbnail_file
                 continue
 
         # Assemble video: intro + B-roll + outro
+        main_duration = max(0, duration - 6)  # 3 sec intro, 3 sec outro
         if broll_clips:
-            # Distribute B-roll across voiceover duration
-            main_duration = max(0, duration - 6)  # 3 sec intro, 3 sec outro
-            avg_clip_duration = main_duration / len(broll_clips) if broll_clips else 3
-
-            # Cut B-roll to fit
-            sized_broll = []
-            for clip in broll_clips:
-                cut_clip = clip.subclip(0, min(clip.duration, avg_clip_duration))
-                sized_broll.append(cut_clip)
-
-            # Concatenate B-roll
-            main_video = concatenate_videoclips(sized_broll, method="chain")
+            # Loop b-roll clips to fill full main_duration — avoids frozen frame
+            looped = []
+            total = 0.0
+            while total < main_duration:
+                for clip in broll_clips:
+                    need = main_duration - total
+                    if need <= 0:
+                        break
+                    cut = clip.subclip(0, min(clip.duration, need))
+                    looped.append(cut)
+                    total += cut.duration
+            main_video = concatenate_videoclips(looped, method="chain")
             main_video = main_video.resize(height=720).set_fps(30)
         else:
-            # Fallback: use solid color
-            main_video = ColorClip(size=(1280, 720), color=(30, 30, 30)).set_duration(max(0, duration - 6))
+            main_video = ColorClip(size=(1280, 720), color=(30, 30, 30)).set_duration(main_duration)
 
         # Create outro (title card with CTA)
         outro = ColorClip(size=(1280, 720), color=(20, 20, 20)).set_duration(3)
@@ -1238,7 +1238,7 @@ async def _run_automation(job_id: str):
                             "tags": ["finance", "money", niche.name],
                             "categoryId": "22",
                         },
-                        "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False},
+                        "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False},
                     }
                     media = MediaFileUpload(final_video_file, mimetype="video/mp4", resumable=True)
                     req = yt.videos().insert(part="snippet,status", body=body, media_body=media)
