@@ -1,3 +1,6 @@
+import PIL.Image
+if not hasattr(PIL.Image, "ANTIALIAS"):
+    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 import re
 import asyncio
 import uuid
@@ -294,11 +297,14 @@ async def fetch_broll(query: str, count: int = 5) -> list:
             data = response.json()
             videos = []
             for video in data.get("videos", []):
-                videos.append({
-                    "url": video["video_files"][0]["link"],
-                    "title": video["user"]["name"],
-                    "duration": video.get("duration", 0)
-                })
+                files = sorted(video.get("video_files", []), key=lambda f: f.get("width", 9999))
+                best = next((f for f in files if 640 <= f.get("width", 0) <= 1280), files[0] if files else None)
+                if best:
+                    videos.append({
+                        "url": best["link"],
+                        "title": video["user"]["name"],
+                        "duration": video.get("duration", 0)
+                    })
             return videos
     except Exception as e:
         sys.stderr.write(f"B-roll fetch error: {str(e)}\n")
@@ -363,7 +369,7 @@ async def assemble_video(voiceover_file: str, broll_videos: list, thumbnail_file
             # Cut B-roll to fit
             sized_broll = []
             for clip in broll_clips:
-                cut_clip = clip.subclipped(0, min(clip.duration, avg_clip_duration))
+                cut_clip = clip.subclip(0, min(clip.duration, avg_clip_duration))
                 sized_broll.append(cut_clip)
 
             # Concatenate B-roll
