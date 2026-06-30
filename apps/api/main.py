@@ -36,7 +36,7 @@ PRICING = {
 session_costs = {"total": 0.0, "calls": []}
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=300)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 Base = declarative_base()
 
 # Database Models
@@ -412,14 +412,25 @@ async def assemble_video(voiceover_file: str, broll_videos: list, thumbnail_file
             # Loop b-roll clips to fill full main_duration — avoids frozen frame
             looped = []
             total = 0.0
+            prev_total = -1.0
             while total < main_duration:
+                if total == prev_total:
+                    break  # guard: zero-duration clips would cause infinite loop
+                prev_total = total
                 for clip in broll_clips:
                     need = main_duration - total
                     if need <= 0:
                         break
-                    cut = clip.subclip(0, min(clip.duration, need))
+                    clip_dur = clip.duration or 0.0
+                    if clip_dur <= 0:
+                        continue
+                    cut = clip.subclip(0, min(clip_dur, need))
+                    if cut.duration <= 0:
+                        continue
                     looped.append(cut)
                     total += cut.duration
+            if not looped:
+                looped = [ColorClip(size=(1280, 720), color=(30, 30, 30)).set_duration(main_duration)]
             main_video = concatenate_videoclips(looped, method="chain")
             main_video = main_video.resize(height=720).set_fps(30)
         else:
@@ -1290,10 +1301,13 @@ async def _run_automation(job_id: str):
             _json2.dump({"status":"done","step":"Complete!","live":_jobs[job_id].get("live",{}),"result":result,"error":None}, _jf)
         _jobs[job_id] = {"status": "done", "step": "Complete!", "result": result}
     except Exception as e:
-        import json as _json3
+        try: db.rollback()
+        except Exception: pass
+        import traceback as _tb2, json as _json3
+        full_err = str(e) + " " + _tb2.format_exc()[:3000]
         os.makedirs("/tmp/hh_jobs", exist_ok=True)
         with open(f"/tmp/hh_jobs/{job_id}.json", "w") as _ef:
-            _json3.dump({"status":"error","step":"Failed","error":str(e),"result":None}, _ef)
+            _json3.dump({"status":"error","step":"Failed","error":full_err,"result":None}, _ef)
         _jobs[job_id] = {"status": "error", "step": "Failed", "error": str(e)}
         # Send failure alert
         try:
